@@ -2,6 +2,8 @@
 
 PWA serverless para que entrenadores programen sesiones y sus atletas las consulten desde cualquier dispositivo.
 
+La documentación técnica y la guía para retomar el proyecto se encuentran en [`documentacion/`](documentacion/README.md).
+
 ## Arquitectura
 
 - React + TypeScript + Vite como PWA.
