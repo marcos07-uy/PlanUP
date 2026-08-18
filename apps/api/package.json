@@ -1,0 +1,20 @@
+{
+  "name": "@planup/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/handler.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs",
+    "typecheck": "tsc --noEmit --pretty false"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.883.0",
+    "@aws-sdk/lib-dynamodb": "^3.883.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.152",
+    "@types/node": "^22.18.0",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.2"
+  }
+}

@@ -1,0 +1,118 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,600;0,700;0,800;1,700;1,800&family=Inter:wght@400;500;600;700&display=swap');
+
+:root { font-family: "Inter", sans-serif; color: #fff; background: #d20d16; font-synthesis: none; --red: #d20d16; --dark: #080808; --paper: #f7f5ef; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--red); }
+button, input, textarea { font: inherit; }
+button { cursor: pointer; }
+.brand { display: flex; align-items: baseline; color: #fff; font: italic 800 38px/1 "Barlow Condensed"; letter-spacing: -.04em; text-transform: uppercase; transform: skew(-3deg); }
+.brand strong { color: #ed1b24; }
+.eyebrow { color: #777; font: 700 12px "Inter"; letter-spacing: .13em; text-transform: uppercase; }
+.primary, .secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 0; padding: 14px 20px; font-weight: 800; text-transform: uppercase; }
+.primary { color: #fff; background: var(--dark); }
+.secondary { color: var(--dark); background: #e5e2d9; }
+.primary.compact { padding: 12px 16px; }
+label { display: grid; gap: 8px; margin-bottom: 18px; color: #3c3c3c; font-size: 13px; font-weight: 700; }
+input, textarea { width: 100%; border: 2px solid #b7b4ac; border-radius: 0; padding: 13px 14px; color: #111; background: #fff; outline: none; }
+input:focus, textarea:focus { border-color: var(--red); box-shadow: 4px 4px 0 var(--dark); }
+.auth-shell { min-height: 100vh; display: grid; grid-template-columns: 1.1fr .9fr; background: var(--red); }
+.auth-intro { display: flex; flex-direction: column; justify-content: space-between; padding: 48px 7vw 80px; color: #fff; background: var(--dark); }
+.auth-intro h1 { margin: auto 0 24px; max-width: 700px; font: italic 800 clamp(52px, 7vw, 96px)/.88 "Barlow Condensed"; letter-spacing: -.035em; text-transform: uppercase; }
+.auth-intro p { max-width: 460px; font-size: 18px; }
+.auth-card { align-self: center; display: flex; flex-direction: column; width: min(420px, calc(100% - 48px)); margin: auto; padding: 42px; color: #111; background: var(--paper); box-shadow: 12px 12px 0 #080808; }
+.auth-card h2 { margin: 7px 0 28px; font: italic 800 36px "Barlow Condensed"; text-transform: uppercase; }
+.role-picker { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 18px; border: 2px solid var(--dark); }
+.role-picker button { border: 0; padding: 12px; background: transparent; }
+.role-picker button.active { color: #fff; background: var(--dark); font-weight: 700; }
+.text-button { margin-top: 14px; border: 0; color: #444; background: none; }
+.error { color: #a00009; font-size: 13px; }
+.splash { min-height: 100vh; display: grid; place-content: center; justify-items: center; gap: 12px; color: #fff; background: var(--dark); }
+.app-shell { min-height: 100vh; background: var(--red); }
+header { height: 86px; display: flex; align-items: center; justify-content: space-between; padding: 0 4vw; border-bottom: 4px solid var(--red); background: var(--dark); }
+.mobile-menu { display: none; border: 0; color: #fff; background: transparent; }
+.user-menu { display: flex; align-items: center; gap: 16px; font-size: 14px; }
+.user-menu button { display: flex; align-items: center; gap: 7px; border: 0; color: #fff; background: none; }
+.dashboard { display: grid; grid-template-columns: 290px minmax(0, 1fr); min-height: calc(100vh - 86px); }
+.athletes-panel { padding: 32px 20px; color: #111; border-right: 4px solid #111; background: var(--paper); }
+.panel-title { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 22px; }
+.panel-title h2 { margin: 4px 0 0; font: italic 800 34px "Barlow Condensed"; text-transform: uppercase; }
+.icon-button { display: grid; place-items: center; width: 42px; height: 42px; border: 0; color: #fff; background: var(--dark); }
+.athlete-list { display: grid; gap: 3px; }
+.athlete-list button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px; border: 0; text-align: left; background: transparent; }
+.athlete-list button.selected { color: #fff; background: var(--dark); }
+.avatar { display: grid; place-items: center; flex: 0 0 40px; height: 40px; color: #fff; background: var(--red); font: 800 22px "Barlow Condensed"; }
+.athlete-list strong, .athlete-list small { display: block; }
+.athlete-list strong { font-family: "Barlow Condensed"; font-size: 18px; text-transform: uppercase; }
+.athlete-list small { margin-top: 2px; color: #777; font-size: 11px; }
+.athlete-list .selected small { color: #bbb; }
+.session-panel { width: min(100%, 930px); margin: 0 auto; padding: 34px clamp(24px, 5vw, 64px) 64px; }
+.athlete-selector > span { display: block; margin-bottom: 7px; font: 700 19px "Barlow Condensed"; letter-spacing: .07em; text-transform: uppercase; }
+.athlete-selector button { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 4px solid var(--dark); padding: 16px 22px; color: #fff; background: var(--dark); font: italic 800 clamp(28px, 4vw, 44px) "Barlow Condensed"; text-align: left; text-transform: uppercase; }
+.date-strip { display: grid; grid-template-columns: repeat(7, 1fr); margin: 5px 0 0; border-bottom: 5px solid var(--dark); }
+.date-strip button { position: relative; display: grid; justify-items: center; gap: 1px; min-width: 54px; padding: 20px 6px 15px; border: 0; color: #fff; background: transparent; font-family: "Barlow Condensed"; text-transform: uppercase; }
+.date-strip button.active { color: #fff; background: var(--dark); }
+.date-strip span { font-size: 18px; font-weight: 700; }
+.date-strip strong { font: italic 800 34px "Barlow Condensed"; }
+.date-strip .session-state { margin-top: 5px; color: #fff; }
+.date-strip button.active .session-state { color: var(--red); }
+.session-heading { padding-top: 22px; }
+.session-heading > div { position: relative; }
+.session-heading h1 { margin: 0; padding: 17px 0 20px; border-bottom: 4px solid var(--dark); font: 800 clamp(48px, 7vw, 78px)/.9 "Barlow Condensed"; letter-spacing: -.035em; }
+.workout, .editor, .empty { margin-top: 14px; color: #111; border: 0; background: transparent; }
+.workout-title { display: flex; align-items: center; gap: 18px; padding: 22px 8px; border-bottom: 4px solid var(--dark); }
+.workout-title h2 { margin: 0; font: italic 800 36px "Barlow Condensed"; text-transform: uppercase; }
+.workout-blocks { display: grid; }
+.workout-block { display: grid; grid-template-columns: 94px 1fr; gap: 22px; padding: 24px 0; border-bottom: 3px solid var(--dark); }
+.block-icon { display: grid; place-items: center; width: 94px; min-height: 94px; align-self: start; color: #fff; background: var(--dark); }
+.workout-block h3 { display: inline-block; margin: 0 0 13px; padding: 7px 30px 7px 13px; color: #fff; background: var(--dark); font: italic 800 28px "Barlow Condensed"; text-transform: uppercase; clip-path: polygon(0 0,100% 0,88% 100%,0 100%); }
+.workout-block p { margin: 0; white-space: pre-wrap; font-size: 16px; line-height: 1.45; }
+.workout-updated { padding: 11px 0; color: #690006; font-size: 11px; text-align: right; text-transform: uppercase; }
+.edit-session { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-top: 8px; border: 3px solid #fff; padding: 16px; color: var(--red); background: #fff; font: italic 800 28px "Barlow Condensed"; text-transform: uppercase; }
+.editor { padding: 24px; background: var(--paper); box-shadow: 9px 9px 0 var(--dark); }
+.editor textarea { min-height: 360px; resize: vertical; font: 500 15px/1.6 "Inter"; }
+.editor > div { display: flex; justify-content: flex-end; gap: 10px; }
+.empty { display: grid; place-items: center; padding: 70px 24px; border: 4px solid var(--dark); text-align: center; }
+.empty h3 { margin: 10px 0 5px; font: italic 800 30px "Barlow Condensed"; text-transform: uppercase; }
+.empty p { margin: 0 0 18px; }
+.toast { position: fixed; right: 24px; bottom: 24px; display: flex; align-items: center; gap: 8px; padding: 13px 18px; color: #fff; background: var(--dark); box-shadow: 6px 6px 0 #fff; }
+
+@media (max-width: 760px) {
+  .auth-shell { grid-template-columns: 1fr; }
+  .auth-intro { min-height: 245px; padding: 28px 24px; }
+  .auth-intro h1 { margin-top: 48px; font-size: 48px; }
+  .auth-intro p { display: none; }
+  .auth-card { margin: -20px auto 30px; padding: 28px 24px; z-index: 1; }
+  header { height: 62px; display: grid; grid-template-columns: 40px 1fr 40px; padding: 0 12px; border-bottom-width: 3px; }
+  header .brand { justify-self: center; font-size: 31px; }
+  .mobile-menu { display: grid; place-items: center; width: 38px; height: 38px; }
+  .user-menu { justify-self: end; }
+  .user-menu > span, .logout-label { display: none; }
+  .dashboard { position: relative; display: block; min-height: calc(100vh - 62px); }
+  .athletes-panel { display: none; }
+  .athletes-panel.mobile-open { position: absolute; inset: 0 40px auto 0; z-index: 5; display: block; border-right: 4px solid var(--dark); border-bottom: 4px solid var(--dark); box-shadow: 8px 8px 0 #0006; }
+  .session-panel { width: 100%; padding: 14px 16px 34px; }
+  .athlete-selector > span { margin-bottom: 4px; font-size: 15px; }
+  .athlete-selector button { padding: 11px 14px; font-size: 27px; }
+  .date-strip { margin-inline: -16px; padding-inline: 7px; overflow-x: hidden; }
+  .date-strip button { min-width: 0; padding: 9px 2px 8px; }
+  .date-strip span { font-size: 12px; }
+  .date-strip strong { font-size: 25px; }
+  .date-strip .session-state { display: none; }
+  .session-heading { padding-top: 9px; }
+  .session-heading h1 { padding: 9px 0 12px; font-size: 46px; }
+  .workout { margin-top: 8px; }
+  .workout-title { padding: 11px 5px; }
+  .workout-title h2 { font-size: 27px; }
+  .workout-block { grid-template-columns: 64px 1fr; gap: 12px; padding: 11px 0; }
+  .block-icon { width: 64px; min-height: 64px; }
+  .workout-block h3 { margin-bottom: 4px; padding: 4px 22px 4px 9px; font-size: 20px; }
+  .workout-block p { font-size: 12.5px; line-height: 1.3; }
+  .workout-updated { padding: 6px 0; font-size: 9px; }
+  .edit-session { margin-top: 3px; padding: 11px; font-size: 23px; }
+  .editor { margin-inline: -3px; padding: 18px; box-shadow: 6px 6px 0 var(--dark); }
+  .editor textarea { min-height: 320px; }
+}
+
+@media (min-width: 761px) {
+  .session-panel { color: #fff; }
+}

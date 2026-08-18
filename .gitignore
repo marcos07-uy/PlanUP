@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!.env.example
+.env
+.DS_Store
