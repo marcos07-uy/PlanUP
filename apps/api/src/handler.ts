@@ -1,4 +1,5 @@
 import type { APIGatewayProxyHandlerV2WithJWTAuthorizer } from "aws-lambda";
+import { randomUUID } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
   DeleteCommand,
@@ -15,6 +16,7 @@ const db = DynamoDBDocumentClient.from(new DynamoDBClient({}), {
   marshallOptions: { removeUndefinedValues: true },
 });
 
+type Database = Pick<DynamoDBDocumentClient, "send">;
 type Role = "coach" | "athlete";
 
 interface Identity {
@@ -43,8 +45,8 @@ function identityFromClaims(claims: Record<string, string | number | boolean | s
   };
 }
 
-async function ensureProfile(identity: Identity) {
-  await db.send(new PutCommand({
+async function ensureProfile(database: Database, identity: Identity) {
+  await database.send(new PutCommand({
     TableName: tableName,
     Item: {
       PK: `USER#${identity.id}`,
@@ -58,21 +60,21 @@ async function ensureProfile(identity: Identity) {
   }));
 }
 
-async function assertCoachAccess(identity: Identity, athleteId: string) {
+async function assertCoachAccess(database: Database, identity: Identity, athleteId: string) {
   if (identity.role !== "coach") throw Object.assign(new Error("Only coaches can modify sessions"), { statusCode: 403 });
-  const relation = await db.send(new GetCommand({
+  const relation = await database.send(new GetCommand({
     TableName: tableName,
     Key: { PK: `COACH#${identity.id}`, SK: `ATHLETE#${athleteId}` },
   }));
   if (!relation.Item) throw Object.assign(new Error("Athlete is not linked to this coach"), { statusCode: 403 });
 }
 
-async function assertReadAccess(identity: Identity, athleteId: string) {
+async function assertReadAccess(database: Database, identity: Identity, athleteId: string) {
   if (identity.role === "athlete") {
     if (identity.id !== athleteId) throw Object.assign(new Error("You cannot view another athlete"), { statusCode: 403 });
     return;
   }
-  await assertCoachAccess(identity, athleteId);
+  await assertCoachAccess(database, identity, athleteId);
 }
 
 function sessionFromItem(item: Record<string, unknown>) {
@@ -84,20 +86,44 @@ function sessionFromItem(item: Record<string, unknown>) {
   };
 }
 
-export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) => {
+function coachSessionFromItem(item: Record<string, unknown>) {
+  return {
+    id: item.id,
+    date: item.date,
+    content: item.content,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function assertDate(value: string | undefined) {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw Object.assign(new Error("A valid session date is required"), { statusCode: 400 });
+  }
+}
+
+function assertContent(value: string | undefined) {
+  const content = value?.trim();
+  if (!content || content.length > 20_000) {
+    throw Object.assign(new Error("Session content must contain between 1 and 20,000 characters"), { statusCode: 400 });
+  }
+  return content;
+}
+
+export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJWTAuthorizer {
+  return async (event) => {
   try {
     const identity = identityFromClaims(event.requestContext.authorizer.jwt.claims);
     const method = event.requestContext.http.method;
     const path = event.rawPath;
 
     if (method === "GET" && path === "/me") {
-      await ensureProfile(identity);
+      await ensureProfile(database, identity);
       return response(200, identity);
     }
 
     if (path === "/athletes" && method === "GET") {
       if (identity.role !== "coach") return response(403, { message: "Only coaches have an athlete list" });
-      const result = await db.send(new QueryCommand({
+      const result = await database.send(new QueryCommand({
         TableName: tableName,
         KeyConditionExpression: "PK = :pk AND begins_with(SK, :athlete)",
         ExpressionAttributeValues: { ":pk": `COACH#${identity.id}`, ":athlete": "ATHLETE#" },
@@ -111,7 +137,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
       const email = body.email?.trim().toLowerCase();
       if (!email) return response(400, { message: "Email is required" });
 
-      const result = await db.send(new QueryCommand({
+      const result = await database.send(new QueryCommand({
         TableName: tableName,
         IndexName: "GSI1",
         KeyConditionExpression: "GSI1PK = :email",
@@ -121,7 +147,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
       const athlete = result.Items?.[0];
       if (!athlete || athlete.role !== "athlete") return response(404, { message: "No registered athlete uses that email" });
 
-      await db.send(new PutCommand({
+      await database.send(new PutCommand({
         TableName: tableName,
         Item: {
           PK: `COACH#${identity.id}`,
@@ -140,16 +166,87 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
       return response(201, { id: athlete.id, name: athlete.name, email: athlete.email });
     }
 
+    if (path === "/coach-sessions" && method === "GET") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can manage coach sessions" });
+      const from = event.queryStringParameters?.from ?? "0000-01-01";
+      const to = event.queryStringParameters?.to ?? "9999-12-31";
+      const result = await database.send(new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to",
+        ExpressionAttributeValues: {
+          ":pk": `COACH#${identity.id}`,
+          ":from": `COACH_SESSION#${from}#`,
+          ":to": `COACH_SESSION#${to}#~`,
+        },
+      }));
+      return response(200, (result.Items ?? []).map(coachSessionFromItem));
+    }
+
+    if (path === "/coach-sessions" && method === "POST") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can create coach sessions" });
+      const body = JSON.parse(event.body ?? "{}") as { date?: string; content?: string };
+      assertDate(body.date);
+      const content = assertContent(body.content);
+      const id = randomUUID();
+      const item = {
+        PK: `COACH#${identity.id}`,
+        SK: `COACH_SESSION#${body.date}#${id}`,
+        entityType: "COACH_SESSION",
+        id,
+        coachId: identity.id,
+        date: body.date,
+        content,
+        updatedAt: new Date().toISOString(),
+      };
+      await database.send(new PutCommand({ TableName: tableName, Item: item }));
+      return response(201, coachSessionFromItem(item));
+    }
+
+    const coachSessionAssignMatch = path.match(/^\/coach-sessions\/([^/]+)\/([^/]+)\/assign$/);
+    if (coachSessionAssignMatch && method === "POST") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can assign coach sessions" });
+      const date = decodeURIComponent(coachSessionAssignMatch[1]);
+      const sessionId = decodeURIComponent(coachSessionAssignMatch[2]);
+      assertDate(date);
+      const body = JSON.parse(event.body ?? "{}") as { athleteIds?: string[] };
+      const athleteIds = [...new Set(body.athleteIds ?? [])].filter(Boolean);
+      if (!athleteIds.length) return response(400, { message: "At least one athlete is required" });
+
+      const coachSession = await database.send(new GetCommand({
+        TableName: tableName,
+        Key: { PK: `COACH#${identity.id}`, SK: `COACH_SESSION#${date}#${sessionId}` },
+      }));
+      if (!coachSession.Item) return response(404, { message: "Coach session not found" });
+
+      await Promise.all(athleteIds.map((athleteId) => assertCoachAccess(database, identity, athleteId)));
+      const updatedAt = new Date().toISOString();
+      await Promise.all(athleteIds.map((athleteId) => database.send(new PutCommand({
+        TableName: tableName,
+        Item: {
+          PK: `ATHLETE#${athleteId}`,
+          SK: `SESSION#${date}`,
+          entityType: "SESSION",
+          athleteId,
+          coachId: identity.id,
+          date,
+          content: coachSession.Item?.content,
+          updatedAt,
+        },
+      }))));
+
+      return response(200, { assigned: athleteIds.length });
+    }
+
     const match = path.match(/^\/athletes\/([^/]+)\/sessions(?:\/([^/]+))?$/);
     if (!match) return response(404, { message: "Route not found" });
     const athleteId = decodeURIComponent(match[1]);
     const date = match[2] ? decodeURIComponent(match[2]) : undefined;
 
     if (method === "GET" && !date) {
-      await assertReadAccess(identity, athleteId);
+      await assertReadAccess(database, identity, athleteId);
       const from = event.queryStringParameters?.from ?? "0000-01-01";
       const to = event.queryStringParameters?.to ?? "9999-12-31";
-      const result = await db.send(new QueryCommand({
+      const result = await database.send(new QueryCommand({
         TableName: tableName,
         KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to",
         ExpressionAttributeValues: {
@@ -161,13 +258,12 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
       return response(200, (result.Items ?? []).map(sessionFromItem));
     }
 
-    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return response(400, { message: "A valid session date is required" });
-    await assertCoachAccess(identity, athleteId);
+    assertDate(date);
+    await assertCoachAccess(database, identity, athleteId);
 
     if (method === "PUT") {
       const body = JSON.parse(event.body ?? "{}") as { content?: string };
-      const content = body.content?.trim();
-      if (!content || content.length > 20_000) return response(400, { message: "Session content must contain between 1 and 20,000 characters" });
+      const content = assertContent(body.content);
       const item = {
         PK: `ATHLETE#${athleteId}`,
         SK: `SESSION#${date}`,
@@ -178,12 +274,12 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
         content,
         updatedAt: new Date().toISOString(),
       };
-      await db.send(new PutCommand({ TableName: tableName, Item: item }));
+      await database.send(new PutCommand({ TableName: tableName, Item: item }));
       return response(200, sessionFromItem(item));
     }
 
     if (method === "DELETE") {
-      await db.send(new DeleteCommand({ TableName: tableName, Key: { PK: `ATHLETE#${athleteId}`, SK: `SESSION#${date}` } }));
+      await database.send(new DeleteCommand({ TableName: tableName, Key: { PK: `ATHLETE#${athleteId}`, SK: `SESSION#${date}` } }));
       return { statusCode: 204 };
     }
 
@@ -194,5 +290,7 @@ export const handler: APIGatewayProxyHandlerV2WithJWTAuthorizer = async (event) 
     const message = error instanceof SyntaxError ? "Invalid JSON body" : error instanceof Error ? error.message : "Unexpected error";
     return response(statusCode, { message: statusCode === 500 ? "Unexpected error" : message });
   }
-};
+  };
+}
 
+export const handler = createHandler(db);

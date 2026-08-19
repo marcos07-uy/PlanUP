@@ -17,16 +17,20 @@ Fecha de contexto: 18 de agosto de 2026.
 - API Lambda con autorización coach–atleta.
 - Tabla única DynamoDB y GSI por email.
 - Terraform para Cognito, API Gateway, Lambda, DynamoDB, S3, CloudFront, IAM, logs y presupuesto.
+- Estado remoto Terraform en S3: `planup-backend`, key `planup/dev/terraform.tfstate`.
+- Entorno `dev` aplicado en AWS.
+- Dominio propio configurado: `https://planup.marcos-lucas.uy`.
+- API desplegada: `https://dzivf9kcm8.execute-api.sa-east-1.amazonaws.com`.
+- Cognito User Pool: `sa-east-1_svr1LdPh2`.
+- Bucket frontend: `planup-web-dev-920250548109`.
 - Build, typecheck, Terraform validate y prueba visual automatizada aprobados.
 - QA visual en `design-qa.md` con resultado `passed`.
 
 ## Qué no está hecho
 
-- No se ejecutó `terraform apply`.
-- No existen todavía recursos AWS de PlanUp.
-- No se probó el flujo real con Cognito y DynamoDB desplegados.
-- No hay dominio propio.
-- No hay CI/CD de GitHub Actions.
+- No se publicó todavía el build web real en el bucket S3 después del apply, salvo que se hayan ejecutado los comandos de deploy manual.
+- No se probó el flujo real completo con Cognito y DynamoDB desplegados.
+- No hay CI/CD de GitHub Actions listo para aplicar infraestructura.
 - No hay backend de invitaciones o aprobación de entrenadores.
 - No hay recuperación de contraseña en la interfaz.
 - No hay pruebas unitarias de Lambda ni pruebas de integración contra DynamoDB Local.
@@ -36,27 +40,19 @@ Fecha de contexto: 18 de agosto de 2026.
 
 ## Orden recomendado para continuar
 
-### 1. Revisar cuenta y plan de Terraform
+### 1. Configurar y publicar el frontend
 
-Confirmar que se utilizará una cuenta AWS personal y ejecutar solamente operaciones de lectura y `terraform plan`. No aplicar contra una cuenta laboral por accidente.
+Crear `apps/web/.env.production` con los valores reales del entorno `dev`, compilar y sincronizar `apps/web/dist` al bucket S3.
 
-### 2. Corregir cualquier diferencia encontrada por `terraform plan`
-
-`terraform validate` pasa, pero un plan real puede revelar permisos, disponibilidad regional o cambios del proveedor.
-
-### 3. Desplegar un entorno `dev`
-
-Aplicar Terraform, configurar `.env.production`, publicar el frontend y conservar los outputs.
-
-### 4. Hacer una prueba con dos cuentas reales
+### 2. Hacer una prueba con dos cuentas reales
 
 Usar un entrenador y un atleta con emails distintos. Validar alta, confirmación, vinculación, creación de sesión y lectura.
 
-### 5. Endurecer el flujo de roles
+### 3. Endurecer el flujo de roles
 
 Antes de invitar usuarios externos, impedir que cualquier persona se autodeclare entrenador. Una opción simple es que solo un administrador cree entrenadores.
 
-### 6. Agregar CI
+### 4. Agregar CI
 
 Ejecutar build, typecheck, Terraform fmt/validate y pruebas en cada pull request. El despliegue automático puede esperar.
 
@@ -71,6 +67,21 @@ npm run typecheck
 npm run build
 terraform -chdir=infra init -backend=false
 terraform -chdir=infra validate
+```
+
+Para publicar el frontend del entorno `dev`:
+
+```bash
+cat > apps/web/.env.production <<'EOF'
+VITE_API_URL=https://dzivf9kcm8.execute-api.sa-east-1.amazonaws.com
+VITE_COGNITO_USER_POOL_ID=sa-east-1_svr1LdPh2
+VITE_COGNITO_CLIENT_ID=76m5o9gka2j55kbkuu3dep1j4l
+VITE_DEMO_MODE=false
+EOF
+
+npm run build --workspace @planup/web
+aws s3 sync apps/web/dist s3://planup-web-dev-920250548109 --delete
+aws cloudfront create-invalidation --distribution-id E1V1H6JQTHD2VW --paths '/*'
 ```
 
 Para vista demo:
@@ -108,10 +119,9 @@ VITE_DEMO_MODE=true npm run dev --workspace @planup/web -- --host 0.0.0.0 --port
 El siguiente hito puede considerarse completo cuando:
 
 - existe un entorno `dev` en la cuenta AWS personal;
-- la PWA se abre desde CloudFront;
+- la PWA se abre desde `https://planup.marcos-lucas.uy`;
 - entrenador y atleta reales pueden registrarse;
 - el entrenador vincula al atleta y publica una sesión;
 - el atleta ve esa sesión desde el celular;
 - la factura y métricas permanecen dentro del presupuesto esperado;
 - el proceso de despliegue real queda actualizado en esta documentación.
-

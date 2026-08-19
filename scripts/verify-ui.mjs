@@ -16,7 +16,7 @@ const dateButtons = page.locator(".date-strip button");
 await dateButtons.nth(3).click();
 await page.getByText("Día libre de momento").waitFor();
 await dateButtons.nth(2).click();
-await page.getByRole("heading", { name: "WOD" }).waitFor();
+await page.getByRole("heading", { name: /wod/i }).waitFor();
 
 await page.getByRole("button", { name: "Editar sesión" }).click();
 const editor = page.getByRole("textbox", { name: "Contenido de la sesión" });

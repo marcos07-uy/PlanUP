@@ -1,4 +1,4 @@
-import type { Athlete, TrainingSession, UserProfile } from "./types";
+import type { Athlete, CoachSession, TrainingSession, UserProfile } from "./types";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -26,6 +26,15 @@ export const api = {
   athletes: (token: string) => request<Athlete[]>("/athletes", token),
   addAthlete: (token: string, email: string) =>
     request<Athlete>("/athletes", token, { method: "POST", body: JSON.stringify({ email }) }),
+  coachSessions: (token: string, from: string, to: string) =>
+    request<CoachSession[]>(`/coach-sessions?from=${from}&to=${to}`, token),
+  createCoachSession: (token: string, date: string, content: string) =>
+    request<CoachSession>("/coach-sessions", token, { method: "POST", body: JSON.stringify({ date, content }) }),
+  assignCoachSession: (token: string, session: CoachSession, athleteIds: string[]) =>
+    request<{ assigned: number }>(`/coach-sessions/${session.date}/${session.id}/assign`, token, {
+      method: "POST",
+      body: JSON.stringify({ athleteIds }),
+    }),
   sessions: (token: string, athleteId: string, from: string, to: string) =>
     request<TrainingSession[]>(`/athletes/${athleteId}/sessions?from=${from}&to=${to}`, token),
   saveSession: (token: string, athleteId: string, date: string, content: string) =>
@@ -36,4 +45,3 @@ export const api = {
   deleteSession: (token: string, athleteId: string, date: string) =>
     request<void>(`/athletes/${athleteId}/sessions/${date}`, token, { method: "DELETE" }),
 };
-

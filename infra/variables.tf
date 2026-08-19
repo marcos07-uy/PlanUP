@@ -1,7 +1,7 @@
 variable "aws_region" {
   description = "AWS region for regional resources."
   type        = string
-  default     = "us-east-1"
+  default     = "sa-east-1"
 }
 
 variable "environment" {
@@ -20,4 +20,16 @@ variable "allowed_origins" {
   description = "Origins allowed to call the API. Authentication still requires a valid Cognito JWT."
   type        = list(string)
   default     = ["*"]
+}
+
+variable "hosted_zone_name" {
+  description = "Route53 public hosted zone name for the frontend domain."
+  type        = string
+  default     = "marcos-lucas.uy"
+}
+
+variable "frontend_domain_name" {
+  description = "Custom domain name for the PlanUp frontend."
+  type        = string
+  default     = "planup.marcos-lucas.uy"
 }
