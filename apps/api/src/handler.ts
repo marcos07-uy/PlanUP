@@ -7,6 +7,7 @@ import {
   GetCommand,
   PutCommand,
   QueryCommand,
+  TransactWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 const tableName = process.env.TABLE_NAME;
@@ -80,10 +81,19 @@ async function assertReadAccess(database: Database, identity: Identity, athleteI
 function sessionFromItem(item: Record<string, unknown>) {
   return {
     athleteId: item.athleteId,
+    coachId: item.coachId,
     date: item.date,
     content: item.content,
     updatedAt: item.updatedAt,
   };
+}
+
+function coachFromItem(item: Record<string, unknown>) {
+  return { id: item.coachId, name: item.name, email: item.email };
+}
+
+function invitationFromItem(item: Record<string, unknown>) {
+  return { coach: coachFromItem(item), createdAt: item.createdAt };
 }
 
 function coachSessionFromItem(item: Record<string, unknown>) {
@@ -137,6 +147,19 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         KeyConditionExpression: "PK = :pk AND begins_with(SK, :athlete)",
         ExpressionAttributeValues: { ":pk": `COACH#${identity.id}`, ":athlete": "ATHLETE#" },
       }));
+      await Promise.all((result.Items ?? []).map((item) => database.send(new PutCommand({
+        TableName: tableName,
+        Item: {
+          PK: `ATHLETE#${item.athleteId}`,
+          SK: `COACH#${identity.id}`,
+          entityType: "ATHLETE_COACH",
+          athleteId: item.athleteId,
+          coachId: identity.id,
+          name: identity.name,
+          email: identity.email,
+          createdAt: item.createdAt,
+        },
+      }))));
       return response(200, (result.Items ?? []).map((item) => ({ id: item.athleteId, name: item.name, email: item.email })));
     }
 
@@ -156,23 +179,89 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       const athlete = result.Items?.[0];
       if (!athlete || athlete.role !== "athlete") return response(404, { message: "No registered athlete uses that email" });
 
+      const existing = await database.send(new GetCommand({
+        TableName: tableName,
+        Key: { PK: `COACH#${identity.id}`, SK: `ATHLETE#${athlete.id}` },
+      }));
+      if (existing.Item) return response(409, { message: "Athlete is already linked to this coach" });
+
+      const invitation = {
+        PK: `ATHLETE#${athlete.id}`,
+        SK: `INVITATION#${identity.id}`,
+        entityType: "COACH_INVITATION",
+        athleteId: athlete.id,
+        coachId: identity.id,
+        name: identity.name,
+        email: identity.email,
+        createdAt: new Date().toISOString(),
+      };
       await database.send(new PutCommand({
         TableName: tableName,
-        Item: {
-          PK: `COACH#${identity.id}`,
-          SK: `ATHLETE#${athlete.id}`,
-          entityType: "COACH_ATHLETE",
-          coachId: identity.id,
-          athleteId: athlete.id,
-          name: athlete.name,
-          email: athlete.email,
-          createdAt: new Date().toISOString(),
-        },
-        ConditionExpression: "attribute_not_exists(PK)",
-      })).catch((error: { name?: string }) => {
-        if (error.name !== "ConditionalCheckFailedException") throw error;
-      });
-      return response(201, { id: athlete.id, name: athlete.name, email: athlete.email });
+        Item: invitation,
+      }));
+      return response(202, invitationFromItem(invitation));
+    }
+
+    if (path === "/coaches" && method === "GET") {
+      if (identity.role !== "athlete") return response(403, { message: "Only athletes have a coach list" });
+      const result = await database.send(new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to",
+        ExpressionAttributeValues: { ":pk": `ATHLETE#${identity.id}`, ":from": "COACH#", ":to": "COACH#~" },
+      }));
+      return response(200, (result.Items ?? []).map(coachFromItem));
+    }
+
+    if (path === "/coach-invitations" && method === "GET") {
+      if (identity.role !== "athlete") return response(403, { message: "Only athletes have coach invitations" });
+      const result = await database.send(new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to",
+        ExpressionAttributeValues: { ":pk": `ATHLETE#${identity.id}`, ":from": "INVITATION#", ":to": "INVITATION#~" },
+      }));
+      return response(200, (result.Items ?? []).map(invitationFromItem));
+    }
+
+    const invitationMatch = path.match(/^\/coach-invitations\/([^/]+)\/(accept|reject)$/);
+    if (invitationMatch && method === "POST") {
+      if (identity.role !== "athlete") return response(403, { message: "Only athletes can answer coach invitations" });
+      const coachId = decodeURIComponent(invitationMatch[1]);
+      const action = invitationMatch[2];
+      const key = { PK: `ATHLETE#${identity.id}`, SK: `INVITATION#${coachId}` };
+      const result = await database.send(new GetCommand({ TableName: tableName, Key: key }));
+      if (!result.Item) return response(404, { message: "Coach invitation not found" });
+
+      if (action === "accept") {
+        const createdAt = new Date().toISOString();
+        await database.send(new TransactWriteCommand({
+          TransactItems: [
+            { Put: { TableName: tableName, Item: {
+              PK: `COACH#${coachId}`,
+              SK: `ATHLETE#${identity.id}`,
+              entityType: "COACH_ATHLETE",
+              coachId,
+              athleteId: identity.id,
+              name: identity.name,
+              email: identity.email,
+              createdAt,
+            } } },
+            { Put: { TableName: tableName, Item: {
+              PK: `ATHLETE#${identity.id}`,
+              SK: `COACH#${coachId}`,
+              entityType: "ATHLETE_COACH",
+              athleteId: identity.id,
+              coachId,
+              name: result.Item.name,
+              email: result.Item.email,
+              createdAt,
+            } } },
+            { Delete: { TableName: tableName, Key: key } },
+          ],
+        }));
+        return response(200, coachFromItem(result.Item));
+      }
+      await database.send(new DeleteCommand({ TableName: tableName, Key: key }));
+      return { statusCode: 204 };
     }
 
     if (path === "/coach-sessions" && method === "GET") {
@@ -237,7 +326,7 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         TableName: tableName,
         Item: {
           PK: `ATHLETE#${athleteId}`,
-          SK: `SESSION#${assignmentDate}`,
+          SK: `SESSION#${identity.id}#${assignmentDate}`,
           entityType: "SESSION",
           athleteId,
           coachId: identity.id,
@@ -257,9 +346,27 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
 
     if (method === "GET" && !date) {
       await assertReadAccess(database, identity, athleteId);
+      const coachId = identity.role === "coach" ? identity.id : event.queryStringParameters?.coachId;
+      if (!coachId) return response(400, { message: "Coach is required" });
+      if (identity.role === "athlete") {
+        const relation = await database.send(new GetCommand({
+          TableName: tableName,
+          Key: { PK: `ATHLETE#${identity.id}`, SK: `COACH#${coachId}` },
+        }));
+        if (!relation.Item) return response(403, { message: "Coach is not linked to this athlete" });
+      }
       const from = event.queryStringParameters?.from ?? "0000-01-01";
       const to = event.queryStringParameters?.to ?? "9999-12-31";
-      const result = await database.send(new QueryCommand({
+      const scoped = await database.send(new QueryCommand({
+        TableName: tableName,
+        KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to",
+        ExpressionAttributeValues: {
+          ":pk": `ATHLETE#${athleteId}`,
+          ":from": `SESSION#${coachId}#${from}`,
+          ":to": `SESSION#${coachId}#${to}`,
+        },
+      }));
+      const legacy = await database.send(new QueryCommand({
         TableName: tableName,
         KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to",
         ExpressionAttributeValues: {
@@ -268,7 +375,10 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
           ":to": `SESSION#${to}`,
         },
       }));
-      return response(200, (result.Items ?? []).map(sessionFromItem));
+      const sessionsByDate = new Map<string, Record<string, unknown>>();
+      for (const item of legacy.Items ?? []) if (item.coachId === coachId) sessionsByDate.set(String(item.date), item);
+      for (const item of scoped.Items ?? []) sessionsByDate.set(String(item.date), item);
+      return response(200, [...sessionsByDate.values()].map(sessionFromItem).sort((a, b) => String(a.date).localeCompare(String(b.date))));
     }
 
     assertDate(date);
@@ -279,7 +389,7 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       const content = assertContent(body.content);
       const item = {
         PK: `ATHLETE#${athleteId}`,
-        SK: `SESSION#${date}`,
+        SK: `SESSION#${identity.id}#${date}`,
         entityType: "SESSION",
         athleteId,
         coachId: identity.id,
@@ -292,7 +402,10 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
     }
 
     if (method === "DELETE") {
-      await database.send(new DeleteCommand({ TableName: tableName, Key: { PK: `ATHLETE#${athleteId}`, SK: `SESSION#${date}` } }));
+      await database.send(new DeleteCommand({ TableName: tableName, Key: { PK: `ATHLETE#${athleteId}`, SK: `SESSION#${identity.id}#${date}` } }));
+      const legacyKey = { PK: `ATHLETE#${athleteId}`, SK: `SESSION#${date}` };
+      const legacy = await database.send(new GetCommand({ TableName: tableName, Key: legacyKey }));
+      if (legacy.Item?.coachId === identity.id) await database.send(new DeleteCommand({ TableName: tableName, Key: legacyKey }));
       return { statusCode: 204 };
     }
 

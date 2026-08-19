@@ -61,7 +61,7 @@ flowchart LR
 - Claves genéricas `PK` y `SK` permiten guardar varios tipos de entidad.
 - Un índice `GSI1` resuelve usuarios por email.
 - Point-in-time recovery y cifrado en reposo están habilitados.
-- Las consultas de sesiones usan claves y rangos de fecha; no hacen table scans.
+- Las consultas de sesiones usan claves compuestas por coach y rangos de fecha; no hacen table scans.
 
 ### Infraestructura como código
 
@@ -89,6 +89,7 @@ flowchart LR
 - API Gateway rechaza tokens inválidos antes de llegar a Lambda.
 - La Lambda deriva la identidad exclusivamente del JWT, nunca del cuerpo enviado por el cliente.
 - Un atleta solo puede leer sesiones cuyo `athleteId` coincide con su `sub` de Cognito.
+- El atleta debe tener una relación inversa aceptada para consultar las sesiones de un coach.
 - Un entrenador solo puede acceder a atletas vinculados mediante un registro de relación.
 - Solo entrenadores pueden crear, editar o eliminar sesiones.
 - S3 bloquea todo acceso público.
@@ -96,7 +97,7 @@ flowchart LR
 
 ## Limitaciones de seguridad pendientes
 
-- El rol se elige durante el registro. Antes de un lanzamiento público conviene introducir invitaciones o aprobación de entrenadores.
+- El rol se elige durante el registro; todavía no existe aprobación administrativa para registrar cuentas de entrenador.
 - CORS acepta cualquier origen porque la API exige JWT y todavía no existe un dominio definitivo. Debe restringirse al dominio de producción cuando esté disponible.
 - No hay WAF ni rate limiting por usuario; API Gateway tiene un límite general de 25 solicitudes por segundo y burst de 50.
 - No hay auditoría funcional de cambios de sesión más allá de `updatedAt` y logs temporales.

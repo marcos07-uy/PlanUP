@@ -23,10 +23,11 @@ import {
   signOut,
   signUp,
 } from "./auth";
-import { demoAthletes, demoCoachSessions, demoProfile, demoSessions } from "./demo";
-import type { Athlete, CoachSession, Role, TrainingSession, UserProfile } from "./types";
+import { demoAthleteProfile, demoAthletes, demoCoachInvitations, demoCoaches, demoCoachSessions, demoProfile, demoSessions } from "./demo";
+import type { Athlete, Coach, CoachInvitation, CoachSession, Role, TrainingSession, UserProfile } from "./types";
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === "true";
+const demoUserProfile = import.meta.env.VITE_DEMO_ROLE === "athlete" ? demoAthleteProfile : demoProfile;
 const today = () => new Date().toISOString().slice(0, 10);
 const monthRange = () => {
   const from = new Date();
@@ -43,7 +44,7 @@ const prettyDate = (value: string) => {
 
 function App() {
   const [token, setToken] = useState<string | null>(demoMode ? "demo" : null);
-  const [profile, setProfile] = useState<UserProfile | null>(demoMode ? demoProfile : null);
+  const [profile, setProfile] = useState<UserProfile | null>(demoMode ? demoUserProfile : null);
   const [loading, setLoading] = useState(!demoMode);
 
   useEffect(() => {
@@ -156,11 +157,14 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
 }
 
 function Dashboard({ token, profile, onLogout }: { token: string; profile: UserProfile; onLogout(): void }) {
-  const [athletes, setAthletes] = useState<Athlete[]>(demoMode ? demoAthletes : []);
-  const [selected, setSelected] = useState<Athlete | null>(demoMode ? demoAthletes[0] : profile.role === "athlete" ? { id: profile.id, name: profile.name, email: profile.email } : null);
-  const [sessions, setSessions] = useState<TrainingSession[]>(demoMode ? demoSessions : []);
-  const [coachSessions, setCoachSessions] = useState<CoachSession[]>(demoMode ? demoCoachSessions : []);
-  const [selectedCoachSessionId, setSelectedCoachSessionId] = useState<string | null>(demoMode ? demoCoachSessions[0]?.id ?? null : null);
+  const [athletes, setAthletes] = useState<Athlete[]>(demoMode && profile.role === "coach" ? demoAthletes : []);
+  const [selected, setSelected] = useState<Athlete | null>(profile.role === "athlete" ? { id: profile.id, name: profile.name, email: profile.email } : demoMode ? demoAthletes[0] : null);
+  const [coaches, setCoaches] = useState<Coach[]>(demoMode && profile.role === "athlete" ? demoCoaches : []);
+  const [coachInvitations, setCoachInvitations] = useState<CoachInvitation[]>(demoMode && profile.role === "athlete" ? demoCoachInvitations : []);
+  const [selectedCoachId, setSelectedCoachId] = useState<string>(demoMode && profile.role === "athlete" ? demoCoaches[0]?.id ?? "" : "");
+  const [sessions, setSessions] = useState<TrainingSession[]>([]);
+  const [coachSessions, setCoachSessions] = useState<CoachSession[]>(demoMode && profile.role === "coach" ? demoCoachSessions : []);
+  const [selectedCoachSessionId, setSelectedCoachSessionId] = useState<string | null>(demoMode && profile.role === "coach" ? demoCoachSessions[0]?.id ?? null : null);
   const [coachSessionTitle, setCoachSessionTitle] = useState("");
   const [coachSessionContent, setCoachSessionContent] = useState("");
   const [creatingCoachSession, setCreatingCoachSession] = useState(false);
@@ -178,10 +182,25 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   }, [profile.role, token]);
 
   useEffect(() => {
-    if (!selected || demoMode) return;
+    if (profile.role !== "athlete" || demoMode) return;
+    Promise.all([api.coaches(token), api.coachInvitations(token)]).then(([coachItems, invitations]) => {
+      setCoaches(coachItems);
+      setCoachInvitations(invitations);
+      setSelectedCoachId((current) => current || coachItems[0]?.id || "");
+    });
+  }, [profile.role, token]);
+
+  const activeCoachId = profile.role === "coach" ? profile.id : selectedCoachId;
+
+  useEffect(() => {
+    if (!selected || !activeCoachId) { setSessions([]); return; }
     const [from, to] = monthRange();
-    api.sessions(token, selected.id, from, to).then(setSessions);
-  }, [selected, token]);
+    if (demoMode) {
+      setSessions(demoSessions.filter((item) => item.athleteId === selected.id && item.coachId === activeCoachId));
+      return;
+    }
+    api.sessions(token, selected.id, activeCoachId, from, to).then(setSessions);
+  }, [activeCoachId, selected, token]);
 
   useEffect(() => {
     if (demoMode || profile.role !== "coach") return;
@@ -197,8 +216,8 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   }, [planningLibrary, selectedCoachSessionId]);
 
   async function save() {
-    if (!selected || !content.trim()) return;
-    const saved = demoMode ? { athleteId: selected.id, date: selectedDate, content, updatedAt: new Date().toISOString() } : await api.saveSession(token, selected.id, selectedDate, content);
+    if (!selected || !activeCoachId || !content.trim()) return;
+    const saved = demoMode ? { athleteId: selected.id, coachId: activeCoachId, date: selectedDate, content, updatedAt: new Date().toISOString() } : await api.saveSession(token, selected.id, selectedDate, content);
     setSessions((items) => [...items.filter((item) => !(item.athleteId === saved.athleteId && item.date === saved.date)), saved]);
     setEditing(false); setNotice("Sesión guardada"); setTimeout(() => setNotice(""), 2200);
   }
@@ -206,8 +225,21 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   async function addAthlete() {
     const email = window.prompt("Email del atleta registrado");
     if (!email) return;
-    const added = demoMode ? { id: `athlete-${Date.now()}`, name: email.split("@")[0], email } : await api.addAthlete(token, email);
-    setAthletes((items) => [...items, added]); setSelected(added);
+    if (!demoMode) await api.inviteAthlete(token, email);
+    setNotice("Invitación enviada al atleta"); setTimeout(() => setNotice(""), 2200);
+  }
+
+  async function answerInvitation(invitation: CoachInvitation, action: "accept" | "reject") {
+    const accepted = demoMode
+      ? invitation.coach
+      : await api.answerCoachInvitation(token, invitation.coach.id, action);
+    setCoachInvitations((items) => items.filter((item) => item.coach.id !== invitation.coach.id));
+    if (action === "accept" && accepted) {
+      setCoaches((items) => [...items.filter((item) => item.id !== accepted.id), accepted]);
+      setSelectedCoachId(accepted.id);
+      setNotice(`${accepted.name} ahora es tu coach`);
+    } else setNotice("Invitación rechazada");
+    setTimeout(() => setNotice(""), 2200);
   }
 
   async function createCoachSession() {
@@ -232,6 +264,7 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
     if (!demoMode) await api.assignCoachSession(token, selectedCoachSession, assignmentDate, assignAthleteIds);
     const assignedSessions = assignAthleteIds.map((athleteId) => ({
       athleteId,
+      coachId: profile.id,
       date: assignmentDate,
       content: selectedCoachSession.content,
       updatedAt: new Date().toISOString(),
@@ -248,11 +281,14 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   const visibleSessions = sessions.filter((item) => item.athleteId === selected?.id).sort((a, b) => a.date.localeCompare(b.date));
 
   return <div className="app-shell">
-    <header><button className="mobile-menu" onClick={() => setMobileTeamOpen((open) => !open)} aria-label="Mostrar atletas"><List size={25} weight="bold" /></button><Brand /><div className="user-menu"><span>{profile.name}</span><button onClick={onLogout} aria-label="Salir"><SignOut size={22} weight="bold" /><span className="logout-label">Salir</span></button></div></header>
+    <header>{profile.role === "coach" ? <button className="mobile-menu" onClick={() => setMobileTeamOpen((open) => !open)} aria-label="Mostrar atletas"><List size={25} weight="bold" /></button> : <span />}<Brand /><div className="user-menu"><span>{profile.name}</span><button onClick={onLogout} aria-label="Salir"><SignOut size={22} weight="bold" /><span className="logout-label">Salir</span></button></div></header>
     <main className="dashboard">
       {profile.role === "coach" && <aside className={`athletes-panel ${mobileTeamOpen ? "mobile-open" : ""}`}><div className="panel-title"><div><span className="eyebrow">Equipo</span><h2>Atletas</h2></div><button className="icon-button" onClick={addAthlete} aria-label="Agregar atleta"><Plus size={22} weight="bold" /></button></div><div className="athlete-list">{athletes.map((athlete) => <button key={athlete.id} className={selected?.id === athlete.id ? "selected" : ""} onClick={() => { setSelected(athlete); setMobileTeamOpen(false); }}><span className="avatar">{athlete.name.slice(0, 1).toUpperCase()}</span><span><strong>{athlete.name}</strong><small>{athlete.email}</small></span></button>)}</div></aside>}
       <section className="session-panel">
-        <div className="athlete-selector"><span>Atleta</span><button type="button">{profile.role === "coach" ? selected?.name ?? "Selecciona un atleta" : profile.name}<CaretDown size={26} weight="bold" /></button></div>
+        {profile.role === "coach"
+          ? <div className="athlete-selector"><span>Atleta</span><button type="button">{selected?.name ?? "Selecciona un atleta"}<CaretDown size={26} weight="bold" /></button></div>
+          : <div className="athlete-selector coach-selector"><span>Coach</span><select aria-label="Coach seleccionado" value={selectedCoachId} onChange={(event) => setSelectedCoachId(event.target.value)} disabled={!coaches.length}><option value="">{coaches.length ? "Seleccioná un coach" : "Todavía no tenés coaches"}</option>{coaches.map((coachItem) => <option key={coachItem.id} value={coachItem.id}>{coachItem.name}</option>)}</select></div>}
+        {profile.role === "athlete" && coachInvitations.length > 0 && <section className="invitation-panel"><div><span className="eyebrow">Solicitudes pendientes</span><h2>Invitaciones de coaches</h2></div>{coachInvitations.map((invitation) => <article key={invitation.coach.id}><div><strong>{invitation.coach.name}</strong><small>{invitation.coach.email}</small></div><div><button className="secondary compact" onClick={() => answerInvitation(invitation, "reject")}>Rechazar</button><button className="primary compact" onClick={() => answerInvitation(invitation, "accept")}>Aceptar</button></div></article>)}</section>}
         <div className="date-strip">{Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() + index - 2); const value = date.toISOString().slice(0, 10); return <button key={value} className={selectedDate === value ? "active" : ""} onClick={() => setSelectedDate(value)}><span>{new Intl.DateTimeFormat("es", { weekday: "short" }).format(date)}</span><strong>{date.getDate()}</strong>{visibleSessions.some((item) => item.date === value) ? <CheckCircle className="session-state" size={13} weight="fill" /> : <Circle className="session-state" size={7} weight="fill" />}</button>; })}</div>
         {profile.role === "coach" && <section className="coach-session-panel">
           <div className="coach-session-title"><div><span className="eyebrow">Biblioteca del entrenador</span><h2>Planificaciones</h2></div><button className="secondary compact" onClick={() => setCreatingCoachSession((value) => !value)}>{creatingCoachSession ? "Cerrar" : "Nueva planificación"}</button></div>
@@ -266,7 +302,7 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
           </div>}
         </section>}
         <div className="session-heading"><div><h1>{prettyDate(selectedDate)}</h1></div></div>
-        {!selected ? <div className="empty"><ClipboardText size={48} weight="bold" /><h3>Tu equipo está vacío</h3><p>Vinculá al primer atleta para comenzar a programar.</p></div> : editing ? <div className="editor"><label>Contenido de la sesión<textarea autoFocus value={content} onChange={(e) => setContent(e.target.value)} placeholder={"==warmup\n\n==fuerza\n\n==wod"} /></label><div><button className="secondary" onClick={() => { setEditing(false); setContent(session?.content ?? ""); }}>Cancelar</button><button className="primary" onClick={save}>Guardar sesión</button></div></div> : session ? <article className="workout"><div className="workout-title"><ClipboardText size={28} weight="fill" /><h2>Sesión del día</h2></div><WorkoutContent content={session.content} /><div className="workout-updated">Actualizado {new Intl.DateTimeFormat("es-UY", { hour: "2-digit", minute: "2-digit" }).format(new Date(session.updatedAt))}</div>{profile.role === "coach" && <button className="edit-session" onClick={() => setEditing(true)}><PencilSimple size={24} weight="fill" />Editar sesión</button>}</article> : <div className="empty"><CalendarDots size={48} weight="bold" /><h3>Día libre de momento</h3><p>{profile.role === "coach" ? "Todavía no cargaste una sesión para este día." : "Tu coach todavía no programó una sesión para este día."}</p>{profile.role === "coach" && <button className="primary compact" onClick={() => setEditing(true)}><Plus size={20} weight="bold" />Agregar sesión</button>}</div>}
+        {!activeCoachId ? <div className="empty"><ClipboardText size={48} weight="bold" /><h3>Elegí un coach</h3><p>Aceptá una invitación o seleccioná un coach para ver sus sesiones.</p></div> : !selected ? <div className="empty"><ClipboardText size={48} weight="bold" /><h3>Tu equipo está vacío</h3><p>Invitá al primer atleta para comenzar a programar.</p></div> : editing ? <div className="editor"><label>Contenido de la sesión<textarea autoFocus value={content} onChange={(e) => setContent(e.target.value)} placeholder={"==warmup\n\n==fuerza\n\n==wod"} /></label><div><button className="secondary" onClick={() => { setEditing(false); setContent(session?.content ?? ""); }}>Cancelar</button><button className="primary" onClick={save}>Guardar sesión</button></div></div> : session ? <article className="workout"><div className="workout-title"><ClipboardText size={28} weight="fill" /><h2>Sesión del día</h2></div><WorkoutContent content={session.content} /><div className="workout-updated">Actualizado {new Intl.DateTimeFormat("es-UY", { hour: "2-digit", minute: "2-digit" }).format(new Date(session.updatedAt))}</div>{profile.role === "coach" && <button className="edit-session" onClick={() => setEditing(true)}><PencilSimple size={24} weight="fill" />Editar sesión</button>}</article> : <div className="empty"><CalendarDots size={48} weight="bold" /><h3>Día libre de momento</h3><p>{profile.role === "coach" ? "Todavía no cargaste una sesión para este día." : "Este coach todavía no programó una sesión para este día."}</p>{profile.role === "coach" && <button className="primary compact" onClick={() => setEditing(true)}><Plus size={20} weight="bold" />Agregar sesión</button>}</div>}
       </section>
     </main>
     {notice && <div className="toast"><CheckCircle size={20} weight="fill" />{notice}</div>}

@@ -19,6 +19,7 @@ class MemoryDb {
       IndexName?: string;
       ExpressionAttributeValues?: Record<string, string>;
       ConditionExpression?: string;
+      TransactItems?: Array<{ Put?: { Item: Item }; Delete?: { Key: { PK: string; SK: string } } }>;
     };
 
     if (command.constructor.name === "PutCommand") {
@@ -39,6 +40,15 @@ class MemoryDb {
     if (command.constructor.name === "DeleteCommand") {
       if (!input.Key) throw new Error("DeleteCommand Key is required");
       this.items.delete(this.key(input.Key.PK, input.Key.SK));
+      return {};
+    }
+
+    if (command.constructor.name === "TransactWriteCommand") {
+      const transactItems = input.TransactItems ?? [];
+      for (const operation of transactItems) {
+        if (operation.Put) this.items.set(this.key(operation.Put.Item.PK, operation.Put.Item.SK), structuredClone(operation.Put.Item));
+        if (operation.Delete) this.items.delete(this.key(operation.Delete.Key.PK, operation.Delete.Key.SK));
+      }
       return {};
     }
 
@@ -71,6 +81,7 @@ class MemoryDb {
 }
 
 const coach = { sub: "coach-1", email: "Coach@Example.com", name: "Coach", "custom:role": "coach" };
+const secondCoach = { sub: "coach-2", email: "second@example.com", name: "Second Coach", "custom:role": "coach" };
 const athlete = { sub: "athlete-1", email: "athlete@example.com", name: "Athlete", "custom:role": "athlete" };
 
 function event(
@@ -116,7 +127,7 @@ describe("PlanUp API handler", () => {
     assert.equal(db.get("USER#coach-1", "PROFILE")?.GSI1PK, "EMAIL#coach@example.com");
   });
 
-  it("links a registered athlete to a coach by email", async () => {
+  it("invites an athlete and links both sides only after acceptance", async () => {
     db.seed({
       PK: "USER#athlete-1",
       SK: "PROFILE",
@@ -129,11 +140,35 @@ describe("PlanUp API handler", () => {
       GSI1SK: "USER#athlete-1",
     });
 
-    const result = await invoke(db, event("POST", "/athletes", coach, { body: { email: "ATHLETE@example.com" } }));
+    const invitation = await invoke(db, event("POST", "/athletes", coach, { body: { email: "ATHLETE@example.com" } }));
 
-    assert.equal(result.statusCode, 201);
-    assert.deepEqual(result.json, { id: "athlete-1", name: "Athlete", email: "athlete@example.com" });
+    assert.equal(invitation.statusCode, 202);
+    assert.deepEqual(invitation.json.coach, { id: "coach-1", name: "Coach", email: "coach@example.com" });
+    assert.equal(db.get("COACH#coach-1", "ATHLETE#athlete-1"), undefined);
+
+    const pending = await invoke(db, event("GET", "/coach-invitations", athlete));
+    assert.equal(pending.json.length, 1);
+
+    const accepted = await invoke(db, event("POST", "/coach-invitations/coach-1/accept", athlete));
+    assert.equal(accepted.statusCode, 200);
     assert.equal(db.get("COACH#coach-1", "ATHLETE#athlete-1")?.entityType, "COACH_ATHLETE");
+    assert.equal(db.get("ATHLETE#athlete-1", "COACH#coach-1")?.entityType, "ATHLETE_COACH");
+
+    const coaches = await invoke(db, event("GET", "/coaches", athlete));
+    assert.deepEqual(coaches.json, [{ id: "coach-1", name: "Coach", email: "coach@example.com" }]);
+  });
+
+  it("allows an athlete to reject a coach invitation", async () => {
+    db.seed({
+      PK: "ATHLETE#athlete-1", SK: "INVITATION#coach-1", entityType: "COACH_INVITATION",
+      athleteId: "athlete-1", coachId: "coach-1", name: "Coach", email: "coach@example.com",
+    });
+
+    const rejected = await invoke(db, event("POST", "/coach-invitations/coach-1/reject", athlete));
+
+    assert.equal(rejected.statusCode, 204);
+    assert.equal(db.get("ATHLETE#athlete-1", "INVITATION#coach-1"), undefined);
+    assert.equal(db.get("COACH#coach-1", "ATHLETE#athlete-1"), undefined);
   });
 
   it("blocks athletes from coach-only routes", async () => {
@@ -181,17 +216,52 @@ describe("PlanUp API handler", () => {
 
     assert.equal(result.statusCode, 200);
     assert.deepEqual(result.json, { assigned: 2 });
-    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#2026-08-25")?.content, "==wod\nAMRAP");
-    assert.equal(db.get("ATHLETE#athlete-2", "SESSION#2026-08-25")?.coachId, "coach-1");
+    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-25")?.content, "==wod\nAMRAP");
+    assert.equal(db.get("ATHLETE#athlete-2", "SESSION#coach-1#2026-08-25")?.coachId, "coach-1");
+  });
+
+  it("keeps sessions from different coaches isolated on the same date", async () => {
+    db.seed(
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },
+      { PK: "COACH#coach-2", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },
+      { PK: "ATHLETE#athlete-1", SK: "COACH#coach-1", entityType: "ATHLETE_COACH", coachId: "coach-1" },
+      { PK: "ATHLETE#athlete-1", SK: "COACH#coach-2", entityType: "ATHLETE_COACH", coachId: "coach-2" },
+    );
+
+    await invoke(db, event("PUT", "/athletes/athlete-1/sessions/2026-08-26", coach, { body: { content: "Coach one" } }));
+    await invoke(db, event("PUT", "/athletes/athlete-1/sessions/2026-08-26", secondCoach, { body: { content: "Coach two" } }));
+
+    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-26")?.content, "Coach one");
+    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-2#2026-08-26")?.content, "Coach two");
+
+    const first = await invoke(db, event("GET", "/athletes/athlete-1/sessions", athlete, {
+      query: { coachId: "coach-1", from: "2026-08-01", to: "2026-08-31" },
+    }));
+    const second = await invoke(db, event("GET", "/athletes/athlete-1/sessions", athlete, {
+      query: { coachId: "coach-2", from: "2026-08-01", to: "2026-08-31" },
+    }));
+
+    assert.equal(first.json[0].content, "Coach one");
+    assert.equal(second.json[0].content, "Coach two");
   });
 
   it("lets athletes read only their own sessions", async () => {
     db.seed(
       {
         PK: "ATHLETE#athlete-1",
+        SK: "COACH#coach-1",
+        entityType: "ATHLETE_COACH",
+        athleteId: "athlete-1",
+        coachId: "coach-1",
+        name: "Coach",
+        email: "coach@example.com",
+      },
+      {
+        PK: "ATHLETE#athlete-1",
         SK: "SESSION#2026-08-18",
         entityType: "SESSION",
         athleteId: "athlete-1",
+        coachId: "coach-1",
         date: "2026-08-18",
         content: "==wod\nAMRAP",
         updatedAt: "2026-08-18T00:00:00.000Z",
@@ -201,6 +271,7 @@ describe("PlanUp API handler", () => {
         SK: "SESSION#2026-08-18",
         entityType: "SESSION",
         athleteId: "athlete-2",
+        coachId: "coach-1",
         date: "2026-08-18",
         content: "==wod\nOther",
         updatedAt: "2026-08-18T00:00:00.000Z",
@@ -208,10 +279,10 @@ describe("PlanUp API handler", () => {
     );
 
     const own = await invoke(db, event("GET", "/athletes/athlete-1/sessions", athlete, {
-      query: { from: "2026-08-01", to: "2026-08-31" },
+      query: { coachId: "coach-1", from: "2026-08-01", to: "2026-08-31" },
     }));
     const other = await invoke(db, event("GET", "/athletes/athlete-2/sessions", athlete, {
-      query: { from: "2026-08-01", to: "2026-08-31" },
+      query: { coachId: "coach-1", from: "2026-08-01", to: "2026-08-31" },
     }));
 
     assert.equal(own.statusCode, 200);

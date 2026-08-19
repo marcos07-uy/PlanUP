@@ -13,8 +13,20 @@ export interface Athlete {
   email: string;
 }
 
+export interface Coach {
+  id: string;
+  name: string;
+  email: string;
+}
+
+export interface CoachInvitation {
+  coach: Coach;
+  createdAt: string;
+}
+
 export interface TrainingSession {
   athleteId: string;
+  coachId: string;
   date: string;
   content: string;
   updatedAt: string;

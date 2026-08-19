@@ -10,7 +10,7 @@ Puede:
 - iniciar sesión;
 - recuperar su contraseña mediante un código enviado por email;
 - ver atletas vinculados;
-- vincular un atleta registrado mediante su email;
+- invitar un atleta registrado mediante su email;
 - consultar todas sus planificaciones guardadas;
 - reutilizar una planificación en cualquier fecha y asignarla a uno o más atletas;
 - consultar sesiones del atleta por rango de fechas;
@@ -24,7 +24,9 @@ Puede:
 - registrarse y confirmar su email;
 - iniciar sesión;
 - recuperar su contraseña mediante un código enviado por email;
-- consultar únicamente sus propias sesiones;
+- aceptar o rechazar invitaciones de entrenadores;
+- seleccionar uno de sus coaches vinculados;
+- consultar únicamente sus propias sesiones para el coach seleccionado;
 - navegar entre fechas.
 
 El atleta no puede modificar sesiones ni consultar datos de otros atletas.
@@ -49,11 +51,14 @@ sequenceDiagram
     E->>W: Ingresa email del atleta
     W->>API: POST /athletes
     API->>D: Busca EMAIL#email en GSI1
-    API->>D: Crea COACH#coach / ATHLETE#athlete
-    API-->>W: Devuelve atleta vinculado
+    API->>D: Crea invitación pendiente bajo ATHLETE#athlete
+    A->>W: Acepta la invitación
+    W->>API: POST /coach-invitations/{coachId}/accept
+    API->>D: Crea relación en ambas direcciones
+    API-->>W: Devuelve coach vinculado
 ```
 
-El atleta debe iniciar sesión al menos una vez antes de ser vinculado. `GET /me` crea su perfil consultable por email en DynamoDB.
+El atleta debe iniciar sesión al menos una vez antes de poder recibir la invitación. `GET /me` crea su perfil consultable por email en DynamoDB. El entrenador no obtiene acceso hasta que el atleta acepta.
 
 ## Recuperación de contraseña
 
@@ -66,8 +71,8 @@ La interfaz responde de forma genérica al solicitar el código para no revelar 
 1. La PWA carga la biblioteca completa de planificaciones del entrenador.
 2. El entrenador puede crear una planificación reutilizable o seleccionar una existente.
 3. Elige una fecha de destino y uno o más atletas vinculados.
-4. La API valida todos los vínculos y copia la planificación a cada atleta en la fecha elegida.
-5. Si ya existía una sesión para un atleta en esa fecha, la asignación reemplaza su contenido.
+4. La API valida todos los vínculos aceptados y copia la planificación a cada atleta en la fecha elegida.
+5. Si ya existía una sesión del mismo coach para un atleta en esa fecha, la asignación reemplaza su contenido. Las sesiones de otros coaches permanecen separadas.
 6. También puede seleccionar un atleta y editar directamente su sesión diaria.
 
 El contenido reconoce encabezados `CALENTAMIENTO`, `FUERZA` y `WOD` para presentarlos como bloques visuales. La base de datos conserva el texto completo, por lo que no depende de esa estructura.
@@ -80,8 +85,15 @@ Todos requieren un JWT de Cognito.
 |---|---|---|---|
 | `GET` | `/me` | Ambos | Devuelve identidad y crea/actualiza el perfil DynamoDB. |
 | `GET` | `/athletes` | Entrenador | Lista atletas vinculados. |
-| `POST` | `/athletes` | Entrenador | Vincula un atleta registrado por email. |
-| `GET` | `/athletes/{id}/sessions?from=&to=` | Ambos | Lista sesiones autorizadas en un rango. |
+| `POST` | `/athletes` | Entrenador | Crea una invitación para un atleta registrado por email. |
+| `GET` | `/coaches` | Atleta | Lista sus coaches aceptados. |
+| `GET` | `/coach-invitations` | Atleta | Lista invitaciones pendientes. |
+| `POST` | `/coach-invitations/{coachId}/accept` | Atleta | Acepta una invitación y crea el vínculo. |
+| `POST` | `/coach-invitations/{coachId}/reject` | Atleta | Rechaza una invitación. |
+| `GET` | `/coach-sessions` | Entrenador | Lista su biblioteca de planificaciones. |
+| `POST` | `/coach-sessions` | Entrenador | Crea una planificación reutilizable. |
+| `POST` | `/coach-sessions/{date}/{id}/assign` | Entrenador | Asigna una planificación a varios atletas. |
+| `GET` | `/athletes/{id}/sessions?coachId=&from=&to=` | Ambos | Lista sesiones del coach indicado en un rango. |
 | `PUT` | `/athletes/{id}/sessions/{date}` | Entrenador | Crea o reemplaza la sesión fechada. |
 | `DELETE` | `/athletes/{id}/sessions/{date}` | Entrenador | Elimina una sesión. |
 

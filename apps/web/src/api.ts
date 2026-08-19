@@ -1,4 +1,4 @@
-import type { Athlete, CoachSession, TrainingSession, UserProfile } from "./types";
+import type { Athlete, Coach, CoachInvitation, CoachSession, TrainingSession, UserProfile } from "./types";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -24,8 +24,12 @@ async function request<T>(path: string, token: string, options?: RequestInit): P
 export const api = {
   me: (token: string) => request<UserProfile>("/me", token),
   athletes: (token: string) => request<Athlete[]>("/athletes", token),
-  addAthlete: (token: string, email: string) =>
-    request<Athlete>("/athletes", token, { method: "POST", body: JSON.stringify({ email }) }),
+  inviteAthlete: (token: string, email: string) =>
+    request<CoachInvitation>("/athletes", token, { method: "POST", body: JSON.stringify({ email }) }),
+  coaches: (token: string) => request<Coach[]>("/coaches", token),
+  coachInvitations: (token: string) => request<CoachInvitation[]>("/coach-invitations", token),
+  answerCoachInvitation: (token: string, coachId: string, action: "accept" | "reject") =>
+    request<Coach | void>(`/coach-invitations/${coachId}/${action}`, token, { method: "POST" }),
   coachSessions: (token: string) => request<CoachSession[]>("/coach-sessions", token),
   createCoachSession: (token: string, date: string, title: string, content: string) =>
     request<CoachSession>("/coach-sessions", token, { method: "POST", body: JSON.stringify({ date, title, content }) }),
@@ -34,8 +38,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ date, athleteIds }),
     }),
-  sessions: (token: string, athleteId: string, from: string, to: string) =>
-    request<TrainingSession[]>(`/athletes/${athleteId}/sessions?from=${from}&to=${to}`, token),
+  sessions: (token: string, athleteId: string, coachId: string, from: string, to: string) =>
+    request<TrainingSession[]>(`/athletes/${athleteId}/sessions?coachId=${encodeURIComponent(coachId)}&from=${from}&to=${to}`, token),
   saveSession: (token: string, athleteId: string, date: string, content: string) =>
     request<TrainingSession>(`/athletes/${athleteId}/sessions/${date}`, token, {
       method: "PUT",
