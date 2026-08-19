@@ -69,6 +69,9 @@ header { height: 86px; display: flex; align-items: center; justify-content: spac
 .coach-session-grid small, .coach-session-grid p { margin: 0; color: #6b6b6b; font-size: 12px; }
 .coach-session-grid button.selected small { color: #d4d4d4; }
 .assign-panel { display: grid; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 3px solid var(--dark); }
+.assignment-date { margin: 0; }
+.assign-heading { display: flex; align-items: center; justify-content: space-between; color: var(--dark); font-size: 13px; }
+.assign-heading .text-button { margin: 0; padding: 4px 0; }
 .assign-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .assign-list label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--dark); font-size: 13px; }
 .assign-list input { width: 18px; height: 18px; padding: 0; accent-color: var(--dark); }

@@ -161,10 +161,12 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   const [sessions, setSessions] = useState<TrainingSession[]>(demoMode ? demoSessions : []);
   const [coachSessions, setCoachSessions] = useState<CoachSession[]>(demoMode ? demoCoachSessions : []);
   const [selectedCoachSessionId, setSelectedCoachSessionId] = useState<string | null>(demoMode ? demoCoachSessions[0]?.id ?? null : null);
+  const [coachSessionTitle, setCoachSessionTitle] = useState("");
   const [coachSessionContent, setCoachSessionContent] = useState("");
   const [creatingCoachSession, setCreatingCoachSession] = useState(false);
   const [assignAthleteIds, setAssignAthleteIds] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState(today());
+  const [assignmentDate, setAssignmentDate] = useState(today());
   const [editing, setEditing] = useState(false);
   const [content, setContent] = useState("");
   const [notice, setNotice] = useState("");
@@ -183,15 +185,16 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
 
   useEffect(() => {
     if (demoMode || profile.role !== "coach") return;
-    const [from, to] = monthRange();
-    api.coachSessions(token, from, to).then(setCoachSessions);
+    api.coachSessions(token).then(setCoachSessions);
   }, [profile.role, token]);
 
   const session = useMemo(() => sessions.find((item) => item.athleteId === selected?.id && item.date === selectedDate), [sessions, selected, selectedDate]);
-  const coachSessionsForDate = useMemo(() => coachSessions.filter((item) => item.date === selectedDate), [coachSessions, selectedDate]);
-  const selectedCoachSession = useMemo(() => coachSessions.find((item) => item.id === selectedCoachSessionId) ?? coachSessionsForDate[0] ?? null, [coachSessions, coachSessionsForDate, selectedCoachSessionId]);
+  const planningLibrary = useMemo(() => [...coachSessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [coachSessions]);
+  const selectedCoachSession = useMemo(() => coachSessions.find((item) => item.id === selectedCoachSessionId) ?? planningLibrary[0] ?? null, [coachSessions, planningLibrary, selectedCoachSessionId]);
   useEffect(() => setContent(session?.content ?? ""), [session]);
-  useEffect(() => { setSelectedCoachSessionId(coachSessionsForDate[0]?.id ?? null); setAssignAthleteIds([]); }, [coachSessionsForDate]);
+  useEffect(() => {
+    if (!selectedCoachSessionId && planningLibrary[0]) setSelectedCoachSessionId(planningLibrary[0].id);
+  }, [planningLibrary, selectedCoachSessionId]);
 
   async function save() {
     if (!selected || !content.trim()) return;
@@ -208,12 +211,13 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   }
 
   async function createCoachSession() {
-    if (!coachSessionContent.trim()) return;
+    if (!coachSessionTitle.trim() || !coachSessionContent.trim()) return;
     const created = demoMode
-      ? { id: `coach-session-${Date.now()}`, date: selectedDate, content: coachSessionContent, updatedAt: new Date().toISOString() }
-      : await api.createCoachSession(token, selectedDate, coachSessionContent);
+      ? { id: `coach-session-${Date.now()}`, title: coachSessionTitle.trim(), date: today(), content: coachSessionContent, updatedAt: new Date().toISOString() }
+      : await api.createCoachSession(token, today(), coachSessionTitle, coachSessionContent);
     setCoachSessions((items) => [...items, created]);
     setSelectedCoachSessionId(created.id);
+    setCoachSessionTitle("");
     setCoachSessionContent("");
     setCreatingCoachSession(false);
     setNotice("Sesión base creada"); setTimeout(() => setNotice(""), 2200);
@@ -224,11 +228,11 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   }
 
   async function assignCoachSession() {
-    if (!selectedCoachSession || !assignAthleteIds.length) return;
-    if (!demoMode) await api.assignCoachSession(token, selectedCoachSession, assignAthleteIds);
+    if (!selectedCoachSession || !assignAthleteIds.length || !assignmentDate) return;
+    if (!demoMode) await api.assignCoachSession(token, selectedCoachSession, assignmentDate, assignAthleteIds);
     const assignedSessions = assignAthleteIds.map((athleteId) => ({
       athleteId,
-      date: selectedCoachSession.date,
+      date: assignmentDate,
       content: selectedCoachSession.content,
       updatedAt: new Date().toISOString(),
     }));
@@ -237,6 +241,7 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
       ...assignedSessions,
     ]);
     setAssignAthleteIds([]);
+    setSelectedDate(assignmentDate);
     setNotice(`Sesión asignada a ${assignedSessions.length} atleta${assignedSessions.length === 1 ? "" : "s"}`); setTimeout(() => setNotice(""), 2200);
   }
 
@@ -249,7 +254,17 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
       <section className="session-panel">
         <div className="athlete-selector"><span>Atleta</span><button type="button">{profile.role === "coach" ? selected?.name ?? "Selecciona un atleta" : profile.name}<CaretDown size={26} weight="bold" /></button></div>
         <div className="date-strip">{Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() + index - 2); const value = date.toISOString().slice(0, 10); return <button key={value} className={selectedDate === value ? "active" : ""} onClick={() => setSelectedDate(value)}><span>{new Intl.DateTimeFormat("es", { weekday: "short" }).format(date)}</span><strong>{date.getDate()}</strong>{visibleSessions.some((item) => item.date === value) ? <CheckCircle className="session-state" size={13} weight="fill" /> : <Circle className="session-state" size={7} weight="fill" />}</button>; })}</div>
-        {profile.role === "coach" && <section className="coach-session-panel"><div className="coach-session-title"><div><span className="eyebrow">Programa del coach</span><h2>Sesiones base</h2></div><button className="secondary compact" onClick={() => setCreatingCoachSession((value) => !value)}>{creatingCoachSession ? "Cerrar" : "Nueva base"}</button></div>{creatingCoachSession && <div className="coach-session-editor"><textarea autoFocus value={coachSessionContent} onChange={(event) => setCoachSessionContent(event.target.value)} placeholder={"==warmup\n\n==fuerza\n\n==wod"} /><button className="primary compact" onClick={createCoachSession}>Crear sesión base</button></div>}<div className="coach-session-grid">{coachSessionsForDate.length ? coachSessionsForDate.map((item) => <button key={item.id} className={selectedCoachSession?.id === item.id ? "selected" : ""} onClick={() => setSelectedCoachSessionId(item.id)}><strong>{parseWorkoutSections(item.content)[0]?.heading ?? "Sesión"}</strong><small>{parseWorkoutSections(item.content).length} bloque{parseWorkoutSections(item.content).length === 1 ? "" : "s"}</small></button>) : <p>No hay sesiones base para este día.</p>}</div>{selectedCoachSession && athletes.length > 0 && <div className="assign-panel"><div className="assign-list">{athletes.map((athlete) => <label key={athlete.id}><input type="checkbox" checked={assignAthleteIds.includes(athlete.id)} onChange={() => toggleAssignment(athlete.id)} />{athlete.name}</label>)}</div><button className="primary compact" disabled={!assignAthleteIds.length} onClick={assignCoachSession}>Asignar sesión</button></div>}</section>}
+        {profile.role === "coach" && <section className="coach-session-panel">
+          <div className="coach-session-title"><div><span className="eyebrow">Biblioteca del entrenador</span><h2>Planificaciones</h2></div><button className="secondary compact" onClick={() => setCreatingCoachSession((value) => !value)}>{creatingCoachSession ? "Cerrar" : "Nueva planificación"}</button></div>
+          {creatingCoachSession && <div className="coach-session-editor"><input aria-label="Nombre de la planificación" autoFocus maxLength={120} value={coachSessionTitle} onChange={(event) => setCoachSessionTitle(event.target.value)} placeholder="Ej.: Fuerza y AMRAP" /><textarea aria-label="Contenido de la planificación" value={coachSessionContent} onChange={(event) => setCoachSessionContent(event.target.value)} placeholder={"==warmup\n\n==fuerza\n\n==wod"} /><button className="primary compact" disabled={!coachSessionTitle.trim() || !coachSessionContent.trim()} onClick={createCoachSession}>Guardar planificación</button></div>}
+          <div className="coach-session-grid">{planningLibrary.length ? planningLibrary.map((item) => <button key={item.id} className={selectedCoachSession?.id === item.id ? "selected" : ""} onClick={() => { setSelectedCoachSessionId(item.id); setAssignAthleteIds([]); }}><strong>{item.title ?? parseWorkoutSections(item.content)[0]?.heading ?? "Planificación"}</strong><small>{parseWorkoutSections(item.content).length} bloque{parseWorkoutSections(item.content).length === 1 ? "" : "s"} · creada {new Intl.DateTimeFormat("es-UY", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${item.date}T12:00:00`))}</small></button>) : <p>Todavía no creaste planificaciones.</p>}</div>
+          {selectedCoachSession && athletes.length > 0 && <div className="assign-panel">
+            <label className="assignment-date">Día de asignación<input type="date" value={assignmentDate} onChange={(event) => setAssignmentDate(event.target.value)} required /></label>
+            <div className="assign-heading"><strong>Atletas</strong><button type="button" className="text-button" onClick={() => setAssignAthleteIds(assignAthleteIds.length === athletes.length ? [] : athletes.map((athlete) => athlete.id))}>{assignAthleteIds.length === athletes.length ? "Limpiar" : "Seleccionar todos"}</button></div>
+            <div className="assign-list">{athletes.map((athlete) => <label key={athlete.id}><input type="checkbox" checked={assignAthleteIds.includes(athlete.id)} onChange={() => toggleAssignment(athlete.id)} />{athlete.name}</label>)}</div>
+            <button className="primary compact" disabled={!assignAthleteIds.length || !assignmentDate} onClick={assignCoachSession}>Asignar a {assignAthleteIds.length} atleta{assignAthleteIds.length === 1 ? "" : "s"}</button>
+          </div>}
+        </section>}
         <div className="session-heading"><div><h1>{prettyDate(selectedDate)}</h1></div></div>
         {!selected ? <div className="empty"><ClipboardText size={48} weight="bold" /><h3>Tu equipo está vacío</h3><p>Vinculá al primer atleta para comenzar a programar.</p></div> : editing ? <div className="editor"><label>Contenido de la sesión<textarea autoFocus value={content} onChange={(e) => setContent(e.target.value)} placeholder={"==warmup\n\n==fuerza\n\n==wod"} /></label><div><button className="secondary" onClick={() => { setEditing(false); setContent(session?.content ?? ""); }}>Cancelar</button><button className="primary" onClick={save}>Guardar sesión</button></div></div> : session ? <article className="workout"><div className="workout-title"><ClipboardText size={28} weight="fill" /><h2>Sesión del día</h2></div><WorkoutContent content={session.content} /><div className="workout-updated">Actualizado {new Intl.DateTimeFormat("es-UY", { hour: "2-digit", minute: "2-digit" }).format(new Date(session.updatedAt))}</div>{profile.role === "coach" && <button className="edit-session" onClick={() => setEditing(true)}><PencilSimple size={24} weight="fill" />Editar sesión</button>}</article> : <div className="empty"><CalendarDots size={48} weight="bold" /><h3>Día libre de momento</h3><p>{profile.role === "coach" ? "Todavía no cargaste una sesión para este día." : "Tu coach todavía no programó una sesión para este día."}</p>{profile.role === "coach" && <button className="primary compact" onClick={() => setEditing(true)}><Plus size={20} weight="bold" />Agregar sesión</button>}</div>}
       </section>

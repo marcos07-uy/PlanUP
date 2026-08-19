@@ -37,6 +37,7 @@ export const demoSessions: TrainingSession[] = [
 export const demoCoachSessions: CoachSession[] = [
   {
     id: "coach-session-1",
+    title: "Fuerza y AMRAP",
     date: iso(0),
     content: "==warmup\n3 rondas:\n• 10 air squats\n• 8 push-ups\n• 200 m remo\n\n==fuerza\nBack squat 5 × 5 al 75%\nDescanso: 2 minutos\n\n==wod\n12 min AMRAP\n8 thrusters (35/25 kg)\n10 pull-ups\n12 box jumps",
     updatedAt: new Date().toISOString(),

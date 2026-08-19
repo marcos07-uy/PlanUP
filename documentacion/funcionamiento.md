@@ -11,6 +11,8 @@ Puede:
 - recuperar su contraseña mediante un código enviado por email;
 - ver atletas vinculados;
 - vincular un atleta registrado mediante su email;
+- consultar todas sus planificaciones guardadas;
+- reutilizar una planificación en cualquier fecha y asignarla a uno o más atletas;
 - consultar sesiones del atleta por rango de fechas;
 - crear o reemplazar una sesión para una fecha;
 - eliminar una sesión.
@@ -61,13 +63,12 @@ La interfaz responde de forma genérica al solicitar el código para no revelar 
 
 ## Flujo de programación
 
-1. El entrenador selecciona un atleta.
-2. La PWA consulta las sesiones del mes visible.
-3. El entrenador selecciona una fecha.
-4. Si existe una sesión, ve su texto; si no existe, ve el estado vacío.
-5. Al editar, escribe texto libre de hasta 20.000 caracteres.
-6. `PUT /athletes/{athleteId}/sessions/{date}` guarda o reemplaza la sesión.
-7. La UI actualiza su estado local y muestra la confirmación “Sesión guardada”.
+1. La PWA carga la biblioteca completa de planificaciones del entrenador.
+2. El entrenador puede crear una planificación reutilizable o seleccionar una existente.
+3. Elige una fecha de destino y uno o más atletas vinculados.
+4. La API valida todos los vínculos y copia la planificación a cada atleta en la fecha elegida.
+5. Si ya existía una sesión para un atleta en esa fecha, la asignación reemplaza su contenido.
+6. También puede seleccionar un atleta y editar directamente su sesión diaria.
 
 El contenido reconoce encabezados `CALENTAMIENTO`, `FUERZA` y `WOD` para presentarlos como bloques visuales. La base de datos conserva el texto completo, por lo que no depende de esa estructura.
 

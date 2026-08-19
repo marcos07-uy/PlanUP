@@ -143,24 +143,23 @@ describe("PlanUp API handler", () => {
     assert.equal(result.json.message, "Only coaches have an athlete list");
   });
 
-  it("creates and lists coach base sessions by date range", async () => {
+  it("creates and lists the complete coach planning library", async () => {
     const createResult = await invoke(db, event("POST", "/coach-sessions", coach, {
-      body: { date: "2026-08-18", content: "==warmup\nMove\n\n==wod\nTrain" },
+      body: { date: "2026-08-18", title: "Fuerza y AMRAP", content: "==warmup\nMove\n\n==wod\nTrain" },
     }));
 
     assert.equal(createResult.statusCode, 201);
     assert.match(createResult.json.id, /^[0-9a-f-]{36}$/);
 
-    const listResult = await invoke(db, event("GET", "/coach-sessions", coach, {
-      query: { from: "2026-08-01", to: "2026-08-31" },
-    }));
+    const listResult = await invoke(db, event("GET", "/coach-sessions", coach));
 
     assert.equal(listResult.statusCode, 200);
     assert.equal(listResult.json.length, 1);
+    assert.equal(listResult.json[0].title, "Fuerza y AMRAP");
     assert.equal(listResult.json[0].content, "==warmup\nMove\n\n==wod\nTrain");
   });
 
-  it("assigns one coach base session to multiple linked athletes", async () => {
+  it("assigns one coach planning to multiple linked athletes on a selected date", async () => {
     db.seed(
       { PK: "COACH#coach-1", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },
       { PK: "COACH#coach-1", SK: "ATHLETE#athlete-2", entityType: "COACH_ATHLETE", athleteId: "athlete-2" },
@@ -177,13 +176,13 @@ describe("PlanUp API handler", () => {
     );
 
     const result = await invoke(db, event("POST", "/coach-sessions/2026-08-18/base-1/assign", coach, {
-      body: { athleteIds: ["athlete-1", "athlete-2", "athlete-1"] },
+      body: { date: "2026-08-25", athleteIds: ["athlete-1", "athlete-2", "athlete-1"] },
     }));
 
     assert.equal(result.statusCode, 200);
     assert.deepEqual(result.json, { assigned: 2 });
-    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#2026-08-18")?.content, "==wod\nAMRAP");
-    assert.equal(db.get("ATHLETE#athlete-2", "SESSION#2026-08-18")?.coachId, "coach-1");
+    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#2026-08-25")?.content, "==wod\nAMRAP");
+    assert.equal(db.get("ATHLETE#athlete-2", "SESSION#2026-08-25")?.coachId, "coach-1");
   });
 
   it("lets athletes read only their own sessions", async () => {
