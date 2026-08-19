@@ -34,9 +34,9 @@ resource "aws_cognito_user_pool" "planup" {
   }
 
   email_configuration {
-    email_sending_account = "DEVELOPER"
-    source_arn            = var.email_identity_arn
-    from_email_address    = var.from_email_address
+    email_sending_account = var.use_ses_email ? "DEVELOPER" : "COGNITO_DEFAULT"
+    source_arn            = var.use_ses_email ? var.email_identity_arn : null
+    from_email_address    = var.use_ses_email ? var.from_email_address : null
   }
 
   verification_message_template {

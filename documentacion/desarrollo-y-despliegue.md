@@ -140,12 +140,12 @@ El módulo `infra/modules/email` prepara el correo transaccional de autenticaci�
 - MAIL FROM `mail.planup.marcos-lucas.uy`;
 - SPF alineado con SES;
 - DMARC en modo monitoreo con `p=none`;
-- remitente visible `PlanUp <no-reply@planup.marcos-lucas.uy>`;
+- remitente preparado `PlanUp <no-reply@planup.marcos-lucas.uy>` para habilitar después de la aprobación;
 - asunto y contenido de verificación personalizados en Cognito.
 
 El primer apply puede esperar varios minutos mientras SES verifica el TXT de identidad. No interrumpirlo mientras `aws_ses_domain_identity_verification` siga creando el recurso.
 
-La solicitud de acceso a producción de SES fue enviada el 19 de agosto de 2026. Verificar su estado antes de probar direcciones no verificadas:
+La solicitud de acceso a producción de SES fue respondida y espera revisión de AWS. Hasta su aprobación, Cognito usa `COGNITO_DEFAULT` mediante `cognito_use_ses_email = false`. Verificar el estado antes de cambiar esa variable a `true`:
 
 ```bash
 aws sesv2 get-account \
@@ -162,7 +162,7 @@ Cuando AWS apruebe la solicitud y la infraestructura esté aplicada, probar regi
 2. Registrar una cuenta atleta y confirmar su email.
 3. Iniciar sesión como atleta al menos una vez.
 4. Registrar una cuenta entrenador con otro email.
-5. Vincular el email del atleta.
+5. Invitar el email del atleta y aceptar la invitación desde su cuenta.
 6. Crear una sesión para hoy.
 7. Cerrar sesión e ingresar como atleta.
 8. Confirmar que la sesión se ve y no puede editarse.

@@ -24,12 +24,16 @@ try {
   await page.goto(appUrl);
   await page.getByRole("heading", { name: "Planificaciones" }).waitFor();
   await page.getByText(/creada \d{2}\/\d{2}\/\d{4}/).waitFor();
+  await page.getByRole("button", { name: /Fuerza y AMRAP/ }).hover();
+  await page.getByRole("tooltip").filter({ hasText: "Back squat 5 × 5" }).waitFor();
 
   await page.getByRole("button", { name: "Nueva planificación" }).click();
   await page.getByLabel("Nombre de la planificación").fill("Velocidad y técnica");
   await page.getByLabel("Contenido de la planificación").fill("==técnica\nDrills\n\n==velocidad\n6 x 100 m");
   await page.getByRole("button", { name: "Guardar planificación" }).click();
   await page.getByRole("button", { name: /Velocidad y técnica/ }).waitFor();
+  await page.getByRole("heading", { name: "Velocidad y técnica" }).waitFor();
+  await page.getByText("6 x 100 m", { exact: true }).waitFor();
 
   await page.getByLabel("Día de asignación").fill("2026-08-27");
   await page.getByRole("button", { name: "Seleccionar todos" }).click();
@@ -38,7 +42,7 @@ try {
   await page.getByText("Sesión asignada a 2 atletas").waitFor();
   await page.getByRole("heading", { name: /jueves, 27 de agosto/i }).waitFor();
 
-  console.log("Planning library verification passed: create, list, select date, select athletes, and assign.");
+  console.log("Planning library verification passed: create, preview, inspect, select athletes, and assign.");
 } finally {
   await browser?.close();
   await server.close();

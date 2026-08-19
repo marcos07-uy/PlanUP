@@ -47,9 +47,9 @@ El atleta debe registrarse e iniciar sesion al menos una vez antes de que un ent
 
 ## Email transaccional
 
-Terraform configura Amazon SES y Cognito para enviar verificaciones desde `PlanUp <no-reply@planup.marcos-lucas.uy>`. La identidad usa Easy DKIM, el MAIL FROM `mail.planup.marcos-lucas.uy`, SPF y una politica DMARC inicialmente en modo monitoreo (`p=none`).
+Terraform mantiene configurada la identidad de Amazon SES para `PlanUp <no-reply@planup.marcos-lucas.uy>`, con Easy DKIM, el MAIL FROM `mail.planup.marcos-lucas.uy`, SPF y DMARC en modo monitoreo (`p=none`). Cognito usa temporalmente su servicio de correo predeterminado para permitir registros durante DEV.
 
-La solicitud para sacar SES del sandbox de `sa-east-1` fue enviada el 19 de agosto de 2026 y permanece pendiente de revision por AWS. Mientras `ProductionAccessEnabled` sea `false`, SES solo puede enviar a destinatarios verificados. Consulte el estado con:
+La solicitud para sacar SES del sandbox de `sa-east-1` fue respondida y el caso espera revisión de AWS. Mientras `ProductionAccessEnabled` sea `false`, `cognito_use_ses_email` debe permanecer en `false`. Consulte el estado con:
 
 ```bash
 aws sesv2 get-account --profile personal --region sa-east-1

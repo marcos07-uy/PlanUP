@@ -64,12 +64,12 @@ El atleta debe iniciar sesión al menos una vez antes de poder recibir la invita
 
 Desde el inicio de sesión, el usuario selecciona **Olvidé mi contraseña**, ingresa su email y recibe un código de Cognito. Luego informa ese código y una contraseña nueva que cumpla la política del User Pool. Cognito valida el código y actualiza la contraseña sin intervención de la API ni de DynamoDB.
 
-La interfaz responde de forma genérica al solicitar el código para no revelar si una dirección está registrada. Mientras SES permanezca en sandbox, el email de recuperación solo puede enviarse a destinatarios permitidos por SES.
+La interfaz responde de forma genérica al solicitar el código para no revelar si una dirección está registrada. Durante DEV, Cognito usa temporalmente su servicio de correo predeterminado para poder enviar a direcciones no verificadas. El remitente personalizado de SES se habilitará cuando AWS conceda acceso a producción.
 
 ## Flujo de programación
 
 1. La PWA carga la biblioteca completa de planificaciones del entrenador.
-2. El entrenador puede crear una planificación reutilizable o seleccionar una existente.
+2. El entrenador puede crear una planificación reutilizable o seleccionar una existente. Cada tarjeta muestra un resumen al pasar el cursor o enfocarla, y la selección abre el contenido completo debajo de la biblioteca.
 3. Elige una fecha de destino y uno o más atletas vinculados.
 4. La API valida todos los vínculos aceptados y copia la planificación a cada atleta en la fecha elegida.
 5. Si ya existía una sesión del mismo coach para un atleta en esa fecha, la asignación reemplaza su contenido. Las sesiones de otros coaches permanecen separadas.

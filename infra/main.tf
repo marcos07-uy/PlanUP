@@ -41,6 +41,7 @@ module "auth" {
   name               = local.name
   email_identity_arn = module.email.identity_arn
   from_email_address = "PlanUp <${var.email_from_address}>"
+  use_ses_email      = var.cognito_use_ses_email
 }
 
 module "api" {

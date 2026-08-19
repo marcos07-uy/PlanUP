@@ -293,7 +293,8 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
         {profile.role === "coach" && <section className="coach-session-panel">
           <div className="coach-session-title"><div><span className="eyebrow">Biblioteca del entrenador</span><h2>Planificaciones</h2></div><button className="secondary compact" onClick={() => setCreatingCoachSession((value) => !value)}>{creatingCoachSession ? "Cerrar" : "Nueva planificación"}</button></div>
           {creatingCoachSession && <div className="coach-session-editor"><input aria-label="Nombre de la planificación" autoFocus maxLength={120} value={coachSessionTitle} onChange={(event) => setCoachSessionTitle(event.target.value)} placeholder="Ej.: Fuerza y AMRAP" /><textarea aria-label="Contenido de la planificación" value={coachSessionContent} onChange={(event) => setCoachSessionContent(event.target.value)} placeholder={"==warmup\n\n==fuerza\n\n==wod"} /><button className="primary compact" disabled={!coachSessionTitle.trim() || !coachSessionContent.trim()} onClick={createCoachSession}>Guardar planificación</button></div>}
-          <div className="coach-session-grid">{planningLibrary.length ? planningLibrary.map((item) => <button key={item.id} className={selectedCoachSession?.id === item.id ? "selected" : ""} onClick={() => { setSelectedCoachSessionId(item.id); setAssignAthleteIds([]); }}><strong>{item.title ?? parseWorkoutSections(item.content)[0]?.heading ?? "Planificación"}</strong><small>{parseWorkoutSections(item.content).length} bloque{parseWorkoutSections(item.content).length === 1 ? "" : "s"} · creada {new Intl.DateTimeFormat("es-UY", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${item.date}T12:00:00`))}</small></button>) : <p>Todavía no creaste planificaciones.</p>}</div>
+          <div className="coach-session-grid">{planningLibrary.length ? planningLibrary.map((item) => <button key={item.id} className={selectedCoachSession?.id === item.id ? "selected" : ""} onClick={() => { setSelectedCoachSessionId(item.id); setAssignAthleteIds([]); }}><strong>{item.title ?? parseWorkoutSections(item.content)[0]?.heading ?? "Planificación"}</strong><small>{parseWorkoutSections(item.content).length} bloque{parseWorkoutSections(item.content).length === 1 ? "" : "s"} · creada {new Intl.DateTimeFormat("es-UY", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${item.date}T12:00:00`))}</small><span className="planning-card-preview" role="tooltip">{planningSummary(item.content)}</span></button>) : <p>Todavía no creaste planificaciones.</p>}</div>
+          {selectedCoachSession && <div className="planning-detail"><span className="eyebrow">Vista previa</span><h3>{selectedCoachSession.title ?? "Planificación"}</h3><WorkoutContent content={selectedCoachSession.content} /></div>}
           {selectedCoachSession && athletes.length > 0 && <div className="assign-panel">
             <label className="assignment-date">Día de asignación<input type="date" value={assignmentDate} onChange={(event) => setAssignmentDate(event.target.value)} required /></label>
             <div className="assign-heading"><strong>Atletas</strong><button type="button" className="text-button" onClick={() => setAssignAthleteIds(assignAthleteIds.length === athletes.length ? [] : athletes.map((athlete) => athlete.id))}>{assignAthleteIds.length === athletes.length ? "Limpiar" : "Seleccionar todos"}</button></div>
@@ -329,6 +330,11 @@ function parseWorkoutSections(content: string) {
 
   if (current) sections.push({ heading: current.heading, body: current.lines.join("\n").trim() });
   return sections;
+}
+
+function planningSummary(content: string) {
+  const summary = content.replace(/^==\s*/gm, "").replace(/\s+/g, " ").trim();
+  return summary.length > 180 ? `${summary.slice(0, 177)}…` : summary;
 }
 
 function WorkoutContent({ content }: { content: string }) {
