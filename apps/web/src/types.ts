@@ -22,6 +22,7 @@ export interface TrainingSession {
 
 export interface CoachSession {
   id: string;
+  title?: string;
   date: string;
   content: string;
   updatedAt: string;

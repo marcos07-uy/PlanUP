@@ -26,14 +26,13 @@ export const api = {
   athletes: (token: string) => request<Athlete[]>("/athletes", token),
   addAthlete: (token: string, email: string) =>
     request<Athlete>("/athletes", token, { method: "POST", body: JSON.stringify({ email }) }),
-  coachSessions: (token: string, from: string, to: string) =>
-    request<CoachSession[]>(`/coach-sessions?from=${from}&to=${to}`, token),
-  createCoachSession: (token: string, date: string, content: string) =>
-    request<CoachSession>("/coach-sessions", token, { method: "POST", body: JSON.stringify({ date, content }) }),
-  assignCoachSession: (token: string, session: CoachSession, athleteIds: string[]) =>
+  coachSessions: (token: string) => request<CoachSession[]>("/coach-sessions", token),
+  createCoachSession: (token: string, date: string, title: string, content: string) =>
+    request<CoachSession>("/coach-sessions", token, { method: "POST", body: JSON.stringify({ date, title, content }) }),
+  assignCoachSession: (token: string, session: CoachSession, date: string, athleteIds: string[]) =>
     request<{ assigned: number }>(`/coach-sessions/${session.date}/${session.id}/assign`, token, {
       method: "POST",
-      body: JSON.stringify({ athleteIds }),
+      body: JSON.stringify({ date, athleteIds }),
     }),
   sessions: (token: string, athleteId: string, from: string, to: string) =>
     request<TrainingSession[]>(`/athletes/${athleteId}/sessions?from=${from}&to=${to}`, token),

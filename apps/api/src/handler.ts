@@ -89,6 +89,7 @@ function sessionFromItem(item: Record<string, unknown>) {
 function coachSessionFromItem(item: Record<string, unknown>) {
   return {
     id: item.id,
+    title: item.title,
     date: item.date,
     content: item.content,
     updatedAt: item.updatedAt,
@@ -107,6 +108,14 @@ function assertContent(value: string | undefined) {
     throw Object.assign(new Error("Session content must contain between 1 and 20,000 characters"), { statusCode: 400 });
   }
   return content;
+}
+
+function assertTitle(value: string | undefined) {
+  const title = value?.trim();
+  if (!title || title.length > 120) {
+    throw Object.assign(new Error("Planning title must contain between 1 and 120 characters"), { statusCode: 400 });
+  }
+  return title;
 }
 
 export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJWTAuthorizer {
@@ -184,8 +193,9 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
 
     if (path === "/coach-sessions" && method === "POST") {
       if (identity.role !== "coach") return response(403, { message: "Only coaches can create coach sessions" });
-      const body = JSON.parse(event.body ?? "{}") as { date?: string; content?: string };
+      const body = JSON.parse(event.body ?? "{}") as { date?: string; title?: string; content?: string };
       assertDate(body.date);
+      const title = assertTitle(body.title);
       const content = assertContent(body.content);
       const id = randomUUID();
       const item = {
@@ -194,6 +204,7 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         entityType: "COACH_SESSION",
         id,
         coachId: identity.id,
+        title,
         date: body.date,
         content,
         updatedAt: new Date().toISOString(),
@@ -208,7 +219,9 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       const date = decodeURIComponent(coachSessionAssignMatch[1]);
       const sessionId = decodeURIComponent(coachSessionAssignMatch[2]);
       assertDate(date);
-      const body = JSON.parse(event.body ?? "{}") as { athleteIds?: string[] };
+      const body = JSON.parse(event.body ?? "{}") as { athleteIds?: string[]; date?: string };
+      const assignmentDate = body.date ?? date;
+      assertDate(assignmentDate);
       const athleteIds = [...new Set(body.athleteIds ?? [])].filter(Boolean);
       if (!athleteIds.length) return response(400, { message: "At least one athlete is required" });
 
@@ -224,11 +237,11 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         TableName: tableName,
         Item: {
           PK: `ATHLETE#${athleteId}`,
-          SK: `SESSION#${date}`,
+          SK: `SESSION#${assignmentDate}`,
           entityType: "SESSION",
           athleteId,
           coachId: identity.id,
-          date,
+          date: assignmentDate,
           content: coachSession.Item?.content,
           updatedAt,
         },
