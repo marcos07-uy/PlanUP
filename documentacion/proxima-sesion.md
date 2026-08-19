@@ -78,6 +78,24 @@ Usar un entrenador y un atleta con emails distintos. Validar alta, confirmación
 
 Antes de invitar usuarios externos, impedir que cualquier persona se autodeclare entrenador. Una opción simple es que solo un administrador cree entrenadores.
 
+### 6. Enviar emails de Cognito desde el dominio de PlanUp
+
+Reemplazar el remitente predeterminado `no-reply@verificationemail.com` por un remitente propio, por ejemplo `PlanUp <no-reply@planup.marcos-lucas.uy>`, usando Amazon SES.
+
+Trabajo propuesto:
+
+1. crear y verificar en SES la identidad `planup.marcos-lucas.uy` en `sa-east-1`;
+2. publicar mediante Route53 los registros DKIM entregados por SES;
+3. configurar un MAIL FROM propio, por ejemplo `mail.planup.marcos-lucas.uy`, con sus registros MX y SPF;
+4. agregar una política DMARC para el dominio;
+5. solicitar que SES salga del sandbox en `sa-east-1` antes de enviar a usuarios reales no verificados;
+6. configurar el User Pool de Cognito con SES, `email_sending_account = "DEVELOPER"`, el ARN de la identidad verificada y el remitente de PlanUp;
+7. personalizar el asunto y contenido del mensaje de confirmación para que coincidan con la marca;
+8. probar registro, reenvío de código y recuperación de contraseña en proveedores como Gmail y Outlook;
+9. comprobar en los encabezados recibidos que DKIM, SPF y DMARC pasan correctamente.
+
+Implementar la identidad, los registros DNS y la configuración de Cognito en Terraform. No considerar esta tarea terminada únicamente porque cambió el texto visible del remitente: la autenticación del dominio y la salida del sandbox son necesarias para una entrega real confiable.
+
 ## Comandos para recuperar contexto rápidamente
 
 ```bash
@@ -131,6 +149,8 @@ VITE_DEMO_MODE=true npm run dev --workspace @planup/web -- --host 0.0.0.0 --port
 - Configurar el secret en el repositorio pero no en el environment correcto, o viceversa.
 - Dar al role OIDC permisos de apply sin limitar adecuadamente el repositorio y el contexto en su trust policy.
 - Aprobar un plan que destruya o reemplace recursos con datos persistentes.
+- Enviar correos desde el dominio propio sin completar DKIM, SPF y DMARC, aumentando la probabilidad de spam o suplantación.
+- Mantener SES en sandbox y asumir que podrá enviar códigos a cualquier dirección de usuario.
 - Publicar con `VITE_DEMO_MODE=true` y creer que existe persistencia real.
 - Intentar vincular un atleta antes de que haya iniciado sesión una vez.
 - Dejar CORS con `*` después de definir un dominio final.
@@ -149,4 +169,5 @@ El siguiente hito puede considerarse completo cuando:
 - la factura y métricas permanecen dentro del presupuesto esperado;
 - el CI de la PR ejecuta un plan real exitoso;
 - el deploy de `main` aplica el plan y publica automáticamente el frontend;
+- Cognito envía desde el dominio de PlanUp y los mensajes pasan DKIM, SPF y DMARC;
 - el proceso de despliegue real queda actualizado en esta documentación.
