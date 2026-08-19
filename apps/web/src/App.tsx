@@ -14,7 +14,15 @@ import {
   SignOut,
 } from "@phosphor-icons/react";
 import { api } from "./api";
-import { confirm, currentToken, signIn, signOut, signUp } from "./auth";
+import {
+  confirm,
+  confirmPasswordReset,
+  currentToken,
+  requestPasswordReset,
+  signIn,
+  signOut,
+  signUp,
+} from "./auth";
 import { demoAthletes, demoCoachSessions, demoProfile, demoSessions } from "./demo";
 import type { Athlete, CoachSession, Role, TrainingSession, UserProfile } from "./types";
 
@@ -66,20 +74,43 @@ function Brand() {
 }
 
 function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: UserProfile): void }) {
-  const [mode, setMode] = useState<"login" | "signup" | "confirm">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "confirm" | "forgot" | "reset">("login");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [role, setRole] = useState<Role>("coach");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
+  function changeMode(nextMode: typeof mode) {
+    setMode(nextMode);
+    setError("");
+    setNotice("");
+    setCode("");
+    setPassword("");
+  }
+
   async function submit(event: FormEvent) {
-    event.preventDefault(); setError(""); setBusy(true);
+    event.preventDefault(); setError(""); setNotice(""); setBusy(true);
     try {
       if (mode === "signup") { await signUp(name, email, password, role); setMode("confirm"); }
       else if (mode === "confirm") { await confirm(email, code); setMode("login"); }
+      else if (mode === "forgot") {
+        try {
+          await requestPasswordReset(email);
+        } catch (cause) {
+          if (!(cause instanceof Error) || cause.name !== "UserNotFoundException") throw cause;
+        }
+        setMode("reset");
+        setNotice("Si existe una cuenta con ese email, vas a recibir un código de recuperación.");
+      }
+      else if (mode === "reset") {
+        await confirmPasswordReset(email, code, password);
+        changeMode("login");
+        setNotice("Contraseña actualizada. Ya podés iniciar sesión.");
+      }
       else {
         const nextToken = await signIn(email, password);
         onAuthenticated(nextToken, await api.me(nextToken));
@@ -88,17 +119,38 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
     finally { setBusy(false); }
   }
 
+  const isPasswordMode = mode === "login" || mode === "signup" || mode === "reset";
+  const title = mode === "login" ? "Inicia sesión"
+    : mode === "signup" ? "Empezá con PlanUp"
+      : mode === "confirm" ? "Revisá tu correo"
+        : mode === "forgot" ? "Recuperá tu acceso"
+          : "Creá una contraseña";
+  const eyebrow = mode === "login" ? "Bienvenido"
+    : mode === "signup" ? "Crear cuenta"
+      : mode === "confirm" ? "Verificar email"
+        : "Recuperar contraseña";
+  const submitLabel = mode === "login" ? "Entrar"
+    : mode === "signup" ? "Crear cuenta"
+      : mode === "confirm" ? "Verificar"
+        : mode === "forgot" ? "Enviar código"
+          : "Cambiar contraseña";
+
   return <main className="auth-shell">
     <section className="auth-intro"><Brand /><h1>Tu entrenamiento,<br />bien organizado.</h1><p>El plan del coach, claro y disponible todos los dias.</p></section>
     <form className="auth-card" onSubmit={submit}>
-      <span className="eyebrow">{mode === "login" ? "Bienvenido" : mode === "signup" ? "Crear cuenta" : "Verificar email"}</span>
-      <h2>{mode === "login" ? "Inicia sesión" : mode === "signup" ? "Empezá con PlanUp" : "Revisá tu correo"}</h2>
+      <span className="eyebrow">{eyebrow}</span>
+      <h2>{title}</h2>
       {mode === "signup" && <><label>Nombre<input value={name} onChange={(e) => setName(e.target.value)} required /></label><div className="role-picker"><button type="button" className={role === "coach" ? "active" : ""} onClick={() => setRole("coach")}>Entrenador</button><button type="button" className={role === "athlete" ? "active" : ""} onClick={() => setRole("athlete")}>Atleta</button></div></>}
-      {mode !== "confirm" && <><label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label><label>Contraseña<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required /></label></>}
-      {mode === "confirm" && <label>Codigo de verificacion<input inputMode="numeric" value={code} onChange={(e) => setCode(e.target.value)} required /></label>}
+      {mode !== "confirm" && mode !== "reset" && <label>Email<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>}
+      {(mode === "confirm" || mode === "reset") && <label>Código de verificación<input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} required /></label>}
+      {isPasswordMode && <label>{mode === "reset" ? "Nueva contraseña" : "Contraseña"}<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required /></label>}
+      {(mode === "signup" || mode === "reset") && <p className="field-hint">Mínimo 8 caracteres, con mayúscula, minúscula y número.</p>}
+      {notice && <p className="notice" role="status">{notice}</p>}
       {error && <p className="error">{error}</p>}
-      <button className="primary" disabled={busy}>{busy ? "Procesando…" : mode === "login" ? "Entrar" : mode === "signup" ? "Crear cuenta" : "Verificar"}</button>
-      {mode !== "confirm" && <button type="button" className="text-button" onClick={() => setMode(mode === "login" ? "signup" : "login")}>{mode === "login" ? "No tengo cuenta" : "Ya tengo cuenta"}</button>}
+      <button className="primary" disabled={busy}>{busy ? "Procesando…" : submitLabel}</button>
+      {mode === "login" && <button type="button" className="text-button" onClick={() => changeMode("forgot")}>Olvidé mi contraseña</button>}
+      {(mode === "login" || mode === "signup") && <button type="button" className="text-button" onClick={() => changeMode(mode === "login" ? "signup" : "login")}>{mode === "login" ? "No tengo cuenta" : "Ya tengo cuenta"}</button>}
+      {(mode === "confirm" || mode === "forgot" || mode === "reset") && <button type="button" className="text-button" onClick={() => changeMode("login")}>Volver al inicio de sesión</button>}
     </form>
   </main>;
 }
