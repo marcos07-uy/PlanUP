@@ -42,6 +42,18 @@ resource "aws_iam_role_policy_attachment" "power_user" {
 
 data "aws_iam_policy_document" "terraform_iam" {
   statement {
+    sid       = "ListOIDCProviders"
+    actions   = ["iam:ListOpenIDConnectProviders"]
+    resources = ["*"]
+  }
+
+  statement {
+    sid       = "ReadGitHubOIDCProvider"
+    actions   = ["iam:GetOpenIDConnectProvider"]
+    resources = [data.aws_iam_openid_connect_provider.github.arn]
+  }
+
+  statement {
     sid = "ManagePlanUpRoles"
     actions = [
       "iam:AttachRolePolicy",
