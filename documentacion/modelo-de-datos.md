@@ -46,12 +46,44 @@ El endpoint `GET /me` hace un `PutItem` idempotente para mantener este perfil si
 
 Nombre y email están duplicados intencionalmente para listar atletas con una sola consulta. Si el atleta cambia esos datos, actualmente la relación no se actualiza automáticamente.
 
+La relación inversa permite que el atleta liste y seleccione sus coaches:
+
+```json
+{
+  "PK": "ATHLETE#<athlete-sub>",
+  "SK": "COACH#<coach-sub>",
+  "entityType": "ATHLETE_COACH",
+  "athleteId": "<athlete-sub>",
+  "coachId": "<coach-sub>",
+  "name": "Marcos",
+  "email": "coach@example.com",
+  "createdAt": "2026-08-18T20:00:00.000Z"
+}
+```
+
+### Invitación de coach
+
+```json
+{
+  "PK": "ATHLETE#<athlete-sub>",
+  "SK": "INVITATION#<coach-sub>",
+  "entityType": "COACH_INVITATION",
+  "athleteId": "<athlete-sub>",
+  "coachId": "<coach-sub>",
+  "name": "Marcos",
+  "email": "coach@example.com",
+  "createdAt": "2026-08-18T20:00:00.000Z"
+}
+```
+
+Aceptar crea las dos relaciones y elimina la invitación. Rechazar solamente elimina la invitación.
+
 ### Sesión
 
 ```json
 {
   "PK": "ATHLETE#<athlete-sub>",
-  "SK": "SESSION#2026-08-18",
+  "SK": "SESSION#<coach-sub>#2026-08-18",
   "entityType": "SESSION",
   "athleteId": "<athlete-sub>",
   "coachId": "<coach-sub>",
@@ -61,7 +93,7 @@ Nombre y email están duplicados intencionalmente para listar atletas con una so
 }
 ```
 
-Hay como máximo una sesión por atleta y fecha. Un `PutItem` sobre la misma clave reemplaza el contenido anterior.
+Hay como máximo una sesión por combinación de atleta, coach y fecha. Dos coaches pueden planificar el mismo día sin sobrescribirse. La API también lee temporalmente el formato anterior `SESSION#fecha` y lo atribuye mediante `coachId`.
 
 ### Planificación reutilizable del entrenador
 
@@ -88,20 +120,21 @@ La fecha identifica cuándo se creó la planificación y forma parte de su clave
 | Obtener perfil | `GetItem(USER#id, PROFILE)`; actualmente `/me` usa `PutItem` directo. |
 | Buscar usuario por email | `Query GSI1` con `GSI1PK = EMAIL#email`. |
 | Listar atletas de un coach | `Query PK = COACH#coach` y `begins_with(SK, ATHLETE#)`. |
-| Verificar vínculo | `GetItem(COACH#coach, ATHLETE#athlete)`. |
+| Listar coaches de un atleta | `Query PK = ATHLETE#athlete`, rango `COACH#` a `COACH#~`. |
+| Listar invitaciones | `Query PK = ATHLETE#athlete`, rango `INVITATION#` a `INVITATION#~`. |
+| Verificar vínculo | `GetItem(COACH#coach, ATHLETE#athlete)` o su relación inversa. |
 | Listar planificaciones del coach | `Query PK = COACH#coach`, `SK BETWEEN COACH_SESSION#0000-01-01# AND COACH_SESSION#9999-12-31#~`. |
 | Asignar planificación | `GetItem` de la planificación, validación de vínculos y un `PutItem` por atleta/fecha. |
-| Listar sesiones por fechas | `Query PK = ATHLETE#athlete`, `SK BETWEEN SESSION#from AND SESSION#to`. |
-| Guardar sesión | `PutItem(ATHLETE#athlete, SESSION#date)`. |
-| Eliminar sesión | `DeleteItem(ATHLETE#athlete, SESSION#date)`. |
+| Listar sesiones por coach y fechas | `Query PK = ATHLETE#athlete`, `SK BETWEEN SESSION#coach#from AND SESSION#coach#to`. |
+| Guardar sesión | `PutItem(ATHLETE#athlete, SESSION#coach#date)`. |
+| Eliminar sesión | `DeleteItem(ATHLETE#athlete, SESSION#coach#date)`. |
 
 No se utiliza `Scan`. Esto mantiene bajo el consumo de lecturas aunque crezca la tabla.
 
 ## Restricciones actuales
 
 - No existe historial de versiones de una sesión.
-- No hay una invitación pendiente: el vínculo aparece inmediatamente.
-- Un atleta podría estar vinculado con varios entrenadores.
-- No existe relación inversa almacenada bajo `ATHLETE#id`; para el MVP no es necesaria.
+- La invitación aparece dentro de PlanUp, pero todavía no genera una notificación adicional por email.
+- No existe todavía una acción para desvincular un coach aceptado.
 - No se aplican TTL ni borrado automático.
 - El contenido de sesión se limita a 20.000 caracteres en Lambda.
