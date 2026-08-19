@@ -55,6 +55,22 @@ header { height: 86px; display: flex; align-items: center; justify-content: spac
 .date-strip strong { font: italic 800 34px "Barlow Condensed"; }
 .date-strip .session-state { margin-top: 5px; color: #fff; }
 .date-strip button.active .session-state { color: var(--red); }
+.coach-session-panel { margin-top: 18px; padding: 18px; color: #111; background: var(--paper); box-shadow: 7px 7px 0 var(--dark); }
+.coach-session-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.coach-session-title h2 { margin: 4px 0 0; font: italic 800 30px "Barlow Condensed"; text-transform: uppercase; }
+.coach-session-editor { display: grid; gap: 10px; margin-bottom: 14px; }
+.coach-session-editor textarea { min-height: 170px; resize: vertical; font: 500 14px/1.5 "Inter"; }
+.coach-session-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.coach-session-grid button { display: grid; gap: 3px; border: 2px solid var(--dark); padding: 11px 12px; color: var(--dark); background: transparent; text-align: left; }
+.coach-session-grid button.selected { color: #fff; background: var(--dark); }
+.coach-session-grid strong { font: italic 800 22px "Barlow Condensed"; text-transform: uppercase; }
+.coach-session-grid small, .coach-session-grid p { margin: 0; color: #6b6b6b; font-size: 12px; }
+.coach-session-grid button.selected small { color: #d4d4d4; }
+.assign-panel { display: grid; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 3px solid var(--dark); }
+.assign-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.assign-list label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--dark); font-size: 13px; }
+.assign-list input { width: 18px; height: 18px; padding: 0; accent-color: var(--dark); }
+button:disabled { cursor: not-allowed; opacity: .55; }
 .session-heading { padding-top: 22px; }
 .session-heading > div { position: relative; }
 .session-heading h1 { margin: 0; padding: 17px 0 20px; border-bottom: 4px solid var(--dark); font: 800 clamp(48px, 7vw, 78px)/.9 "Barlow Condensed"; letter-spacing: -.035em; }
@@ -98,6 +114,11 @@ header { height: 86px; display: flex; align-items: center; justify-content: spac
   .date-strip span { font-size: 12px; }
   .date-strip strong { font-size: 25px; }
   .date-strip .session-state { display: none; }
+  .coach-session-panel { margin-top: 12px; padding: 14px; box-shadow: 5px 5px 0 var(--dark); }
+  .coach-session-title h2 { font-size: 24px; }
+  .coach-session-title .compact { padding: 10px 12px; font-size: 12px; }
+  .coach-session-grid { grid-template-columns: 1fr; }
+  .assign-list { grid-template-columns: 1fr 1fr; }
   .session-heading { padding-top: 9px; }
   .session-heading h1 { padding: 9px 0 12px; font-size: 46px; }
   .workout { margin-top: 8px; }

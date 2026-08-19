@@ -32,9 +32,11 @@ flowchart LR
 
 - S3 almacena los archivos compilados en un bucket privado.
 - CloudFront es el único lector del bucket mediante Origin Access Control.
-- CloudFront entrega HTTPS, caché y compresión.
+- CloudFront entrega HTTPS, caché y compresión para `planup.marcos-lucas.uy`.
+- ACM emite el certificado TLS en `us-east-1`, requerido por CloudFront.
+- Route 53 administra la validación DNS del certificado y los records `A`/`AAAA` alias al dominio CloudFront.
 - Los errores 403 y 404 se redirigen a `index.html` para soportar navegación de una SPA.
-- La configuración actual utiliza el certificado y dominio estándar de CloudFront. No hay dominio personalizado todavía.
+- El dominio directo de CloudFront del entorno `dev` es `https://d358hs0zx9ij6r.cloudfront.net`.
 
 ### Autenticación
 
@@ -51,7 +53,7 @@ flowchart LR
 - API Gateway utiliza HTTP API, más económico que REST API para este alcance.
 - La Lambda está configurada con 128 MB y timeout de 10 segundos.
 - Los logs se conservan durante siete días para reducir almacenamiento.
-- El bundle se produce con esbuild en `apps/api/dist/index.mjs`.
+- El bundle se produce con esbuild en `apps/api/dist/index.js`.
 
 ### Persistencia
 
@@ -67,6 +69,7 @@ flowchart LR
 - Terraform crea todos los recursos anteriores, permisos IAM mínimos y alertas opcionales de presupuesto.
 - La alerta se crea solamente cuando `billing_alert_email` tiene un valor.
 - La configuración validada usa AWS Provider 6 y Archive Provider 2.
+- La región principal es `sa-east-1`; ACM para CloudFront usa un provider alias en `us-east-1`.
 
 ## Decisiones tomadas
 
@@ -97,4 +100,3 @@ flowchart LR
 - CORS acepta cualquier origen porque la API exige JWT y todavía no existe un dominio definitivo. Debe restringirse al dominio de producción cuando esté disponible.
 - No hay WAF ni rate limiting por usuario; API Gateway tiene un límite general de 25 solicitudes por segundo y burst de 50.
 - No hay auditoría funcional de cambios de sesión más allá de `updatedAt` y logs temporales.
-

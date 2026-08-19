@@ -20,3 +20,9 @@ export interface TrainingSession {
   updatedAt: string;
 }
 
+export interface CoachSession {
+  id: string;
+  date: string;
+  content: string;
+  updatedAt: string;
+}

@@ -41,9 +41,23 @@ Luego de aplicar Terraform:
 
 1. Copie el output `frontend_env` a `apps/web/.env.production`.
 2. Ejecute los comandos del output `deploy_frontend_commands`.
-3. Abra `app_url`.
+3. Abra `app_url`: `https://planup.marcos-lucas.uy`.
 
 El atleta debe registrarse e iniciar sesion al menos una vez antes de que un entrenador pueda vincularlo por email. Para limitar el costo, configure `billing_alert_email` en `terraform.tfvars`; Terraform creara alertas al 80% previsto y al 100% real del presupuesto mensual de USD 5.
+
+## CI/CD
+
+GitHub Actions ejecuta tests, typecheck, build, validacion y `terraform plan` contra el estado remoto en PRs. Al mergear a `main`, el workflow `Terraform Apply` genera un plan guardado, lo aplica usando OIDC contra AWS, construye el frontend con los outputs resultantes, sincroniza los archivos con S3 e invalida CloudFront.
+
+Configure estos valores en GitHub antes de habilitar deploy:
+
+- Variable `AWS_REGION`: region AWS, por defecto `sa-east-1`.
+
+El ARN del role OIDC no es secreto y se declara directamente en los workflows. Terraform administra el role `planup-dev-github-actions` y limita su trust al subject personalizado de GitHub `repo:marcos07-uy@171387849/PlanUP@1338801998:environment:production`, que identifica al repositorio y al environment `production` mediante sus IDs estables.
+
+Los jobs de plan y apply usan el environment `production`. Configure required reviewers en las deployment protection rules de ese environment para exigir aprobacion manual antes de acceder a AWS.
+
+El backend remoto se define en `infra/backend.tf`. El plan de CI usa ese estado para detectar cambios reales antes del merge; para validaciones locales sin estado remoto puede usar `terraform -chdir=infra init -backend=false`.
 
 ## Alcance del MVP
 

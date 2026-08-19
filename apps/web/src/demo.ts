@@ -1,4 +1,4 @@
-import type { Athlete, TrainingSession, UserProfile } from "./types";
+import type { Athlete, CoachSession, TrainingSession, UserProfile } from "./types";
 
 export const demoProfile: UserProfile = {
   id: "coach-demo",
@@ -23,14 +23,22 @@ export const demoSessions: TrainingSession[] = [
   {
     athleteId: "athlete-1",
     date: iso(0),
-    content: "CALENTAMIENTO\n3 rondas:\n• 10 air squats\n• 8 push-ups\n• 200 m remo\n\nFUERZA\nBack squat 5 × 5 al 75%\nDescanso: 2 minutos\n\nWOD — 12 min AMRAP\n8 thrusters (35/25 kg)\n10 pull-ups\n12 box jumps",
+    content: "==warmup\n3 rondas:\n• 10 air squats\n• 8 push-ups\n• 200 m remo\n\n==fuerza\nBack squat 5 × 5 al 75%\nDescanso: 2 minutos\n\n==wod\n12 min AMRAP\n8 thrusters (35/25 kg)\n10 pull-ups\n12 box jumps",
     updatedAt: new Date().toISOString(),
   },
   {
     athleteId: "athlete-1",
     date: iso(2),
-    content: "TECNICA\n15 minutos de progresiones de handstand.\n\nCONDICIONAMIENTO\n5 rondas por tiempo:\n400 m carrera\n15 kettlebell swings",
+    content: "==tecnica\n15 minutos de progresiones de handstand.\n\n==condicionamiento\n5 rondas por tiempo:\n400 m carrera\n15 kettlebell swings",
     updatedAt: new Date().toISOString(),
   },
 ];
 
+export const demoCoachSessions: CoachSession[] = [
+  {
+    id: "coach-session-1",
+    date: iso(0),
+    content: "==warmup\n3 rondas:\n• 10 air squats\n• 8 push-ups\n• 200 m remo\n\n==fuerza\nBack squat 5 × 5 al 75%\nDescanso: 2 minutos\n\n==wod\n12 min AMRAP\n8 thrusters (35/25 kg)\n10 pull-ups\n12 box jumps",
+    updatedAt: new Date().toISOString(),
+  },
+];

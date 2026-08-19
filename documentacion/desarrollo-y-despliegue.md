@@ -57,9 +57,9 @@ git diff --check
 - mensaje de éxito;
 - errores de página y consola.
 
-## Primer despliegue AWS
+## Despliegue AWS
 
-No se ha ejecutado todavía. Antes de continuar, confirmar que AWS CLI apunta a la cuenta personal deseada:
+El entorno `dev` ya fue aplicado en AWS con estado remoto en S3. Antes de aplicar cambios nuevos, confirmar que AWS CLI apunta a la cuenta personal deseada:
 
 ```bash
 aws sts get-caller-identity
@@ -74,7 +74,7 @@ cp infra/terraform.tfvars.example infra/terraform.tfvars
 Editar como mínimo:
 
 ```hcl
-aws_region          = "us-east-1"
+aws_region          = "sa-east-1"
 environment         = "dev"
 billing_alert_email = "email-personal@example.com"
 ```
@@ -93,6 +93,17 @@ Solo después de revisar el plan:
 terraform -chdir=infra apply
 ```
 
+Outputs actuales del entorno `dev`:
+
+```text
+api_url = "https://dzivf9kcm8.execute-api.sa-east-1.amazonaws.com"
+app_url = "https://planup.marcos-lucas.uy"
+cloudfront_url = "https://d358hs0zx9ij6r.cloudfront.net"
+cognito_client_id = "76m5o9gka2j55kbkuu3dep1j4l"
+cognito_user_pool_id = "sa-east-1_svr1LdPh2"
+web_bucket = "planup-web-dev-920250548109"
+```
+
 ## Configurar y publicar frontend
 
 Después del `apply`, Terraform imprime `frontend_env`. Copiar su contenido a:
@@ -101,12 +112,21 @@ Después del `apply`, Terraform imprime `frontend_env`. Copiar su contenido a:
 apps/web/.env.production
 ```
 
+Contenido actual para producción:
+
+```dotenv
+VITE_API_URL=https://dzivf9kcm8.execute-api.sa-east-1.amazonaws.com
+VITE_COGNITO_USER_POOL_ID=sa-east-1_svr1LdPh2
+VITE_COGNITO_CLIENT_ID=76m5o9gka2j55kbkuu3dep1j4l
+VITE_DEMO_MODE=false
+```
+
 Luego compilar y publicar:
 
 ```bash
 npm run build --workspace @planup/web
-aws s3 sync apps/web/dist s3://<output-web_bucket> --delete
-aws cloudfront create-invalidation --distribution-id <distribution-id> --paths '/*'
+aws s3 sync apps/web/dist s3://planup-web-dev-920250548109 --delete
+aws cloudfront create-invalidation --distribution-id E1V1H6JQTHD2VW --paths '/*'
 ```
 
 El output `deploy_frontend_commands` entrega los mismos comandos con los valores reales del bucket y la distribución.
@@ -126,10 +146,9 @@ El output `deploy_frontend_commands` entrega los mismos comandos con los valores
 
 ## Costos y cuidados
 
-- No hay recursos AWS mientras no se ejecute `terraform apply`.
 - CloudFront, Lambda, Cognito y DynamoDB tienen niveles gratuitos amplios para este MVP, pero el costo nunca debe asumirse como cero.
 - AWS Budgets alerta; no detiene automáticamente los servicios.
-- Route 53 y un dominio propio no están incluidos todavía.
+- Route 53 publica el dominio `planup.marcos-lucas.uy` sobre la hosted zone `marcos-lucas.uy`.
 - Point-in-time recovery de DynamoDB está habilitado por seguridad y puede tener costo según uso.
 - Revisar siempre `terraform plan` y la identidad AWS antes de aplicar.
 
