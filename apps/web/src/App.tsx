@@ -18,6 +18,7 @@ import {
   confirm,
   confirmPasswordReset,
   currentToken,
+  resendConfirmation,
   requestPasswordReset,
   signIn,
   signOut,
@@ -84,6 +85,14 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(() => setResendCooldown((seconds) => Math.max(0, seconds - 1)), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
 
   function changeMode(nextMode: typeof mode) {
     setMode(nextMode);
@@ -91,6 +100,7 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
     setNotice("");
     setCode("");
     setPassword("");
+    setResendCooldown(0);
   }
 
   async function submit(event: FormEvent) {
@@ -116,8 +126,30 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
         const nextToken = await signIn(email, password);
         onAuthenticated(nextToken, await api.me(nextToken));
       }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos completar la operación"); }
+    } catch (cause) {
+      if (mode === "login" && cause instanceof Error && cause.name === "UserNotConfirmedException") {
+        setMode("confirm");
+        setPassword("");
+        setNotice("Tu cuenta todavía no está confirmada. Podés solicitar un código nuevo.");
+      } else {
+        setError(cause instanceof Error ? cause.message : "No pudimos completar la operación");
+      }
+    }
     finally { setBusy(false); }
+  }
+
+  async function resendCode() {
+    if (resending || resendCooldown > 0) return;
+    setError(""); setNotice(""); setResending(true);
+    try {
+      await resendConfirmation(email);
+      setNotice("Enviamos un nuevo código de verificación. Revisá también spam y promociones.");
+      setResendCooldown(60);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No pudimos reenviar el código");
+    } finally {
+      setResending(false);
+    }
   }
 
   const isPasswordMode = mode === "login" || mode === "signup" || mode === "reset";
@@ -149,6 +181,9 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
       {notice && <p className="notice" role="status">{notice}</p>}
       {error && <p className="error">{error}</p>}
       <button className="primary" disabled={busy}>{busy ? "Procesando…" : submitLabel}</button>
+      {mode === "confirm" && <button type="button" className="text-button" disabled={resending || resendCooldown > 0} onClick={resendCode}>
+        {resending ? "Reenviando…" : resendCooldown > 0 ? `Reenviar código en ${resendCooldown}s` : "Reenviar código"}
+      </button>}
       {mode === "login" && <button type="button" className="text-button" onClick={() => changeMode("forgot")}>Olvidé mi contraseña</button>}
       {(mode === "login" || mode === "signup") && <button type="button" className="text-button" onClick={() => changeMode(mode === "login" ? "signup" : "login")}>{mode === "login" ? "No tengo cuenta" : "Ya tengo cuenta"}</button>}
       {(mode === "confirm" || mode === "forgot" || mode === "reset") && <button type="button" className="text-button" onClick={() => changeMode("login")}>Volver al inicio de sesión</button>}
