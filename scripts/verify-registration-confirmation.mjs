@@ -40,6 +40,12 @@ try {
   });
 
   await page.goto(appUrl);
+  await page.getByRole("button", { name: "Ya tengo un código de confirmación" }).click();
+  await page.getByLabel("Email").fill("pendiente@gmail.com");
+  await page.getByLabel("Código de verificación").fill("123456");
+  await page.getByRole("button", { name: "Verificar" }).click();
+  await page.getByRole("heading", { name: "Inicia sesión" }).waitFor();
+
   await page.getByRole("button", { name: "No tengo cuenta" }).click();
   await page.getByLabel("Nombre").fill("Atleta Prueba");
   await page.getByLabel("Email").fill("atleta@gmail.com");
@@ -59,12 +65,12 @@ try {
   await page.getByRole("button", { name: "Reenviar código", exact: true }).click();
   await page.getByText("Enviamos un nuevo código de verificación").waitFor();
 
-  const expected = ["SignUp", "ResendConfirmationCode", "InitiateAuth", "ResendConfirmationCode"];
+  const expected = ["ConfirmSignUp", "SignUp", "ResendConfirmationCode", "InitiateAuth", "ResendConfirmationCode"];
   if (JSON.stringify(cognitoOperations) !== JSON.stringify(expected)) {
     throw new Error(`Unexpected Cognito operations: ${cognitoOperations.join(", ")}`);
   }
 
-  console.log("Registration confirmation verification passed: sign up, unconfirmed sign-in, resend, and cooldown.");
+  console.log("Registration confirmation verification passed: direct code entry, sign up, unconfirmed sign-in, resend, and cooldown.");
 } finally {
   await browser?.close();
   await server.close();
