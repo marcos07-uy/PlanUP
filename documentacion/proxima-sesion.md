@@ -2,7 +2,7 @@
 
 ## Última actualización
 
-Fecha de contexto: 18 de agosto de 2026.
+Fecha de contexto: 19 de agosto de 2026.
 
 ## Qué está terminado
 
@@ -23,19 +23,20 @@ Fecha de contexto: 18 de agosto de 2026.
 - API desplegada: `https://dzivf9kcm8.execute-api.sa-east-1.amazonaws.com`.
 - Cognito User Pool: `sa-east-1_svr1LdPh2`.
 - Bucket frontend: `planup-web-dev-920250548109`.
-- PR abierta en draft: `https://github.com/marcos07-uy/PlanUP/pull/1`, rama `agent/deploy-planup-aws`.
+- PR #1 mergeada en `main`: `https://github.com/marcos07-uy/PlanUP/pull/1`, merge commit `ebd2aeb`.
 - CI de PR con tests, typecheck, build, Terraform fmt/validate y `terraform plan` contra el estado remoto.
 - Deploy de `main` con plan guardado, `terraform apply`, generación de variables del frontend desde outputs, build web, sincronización a S3 e invalidación de CloudFront.
-- El deploy usa el environment de GitHub `production` para permitir required reviewers antes de acceder a AWS.
-- Último commit de continuidad: `7a706a9 Add planned infrastructure and frontend deployment`.
+- GitHub Actions asume mediante OIDC el role `planup-dev-github-actions`; no hay access keys ni secrets de AWS almacenados en GitHub.
+- El trust OIDC usa el subject personalizado `repo:marcos07-uy@171387849/PlanUP@1338801998:environment:production`.
+- Primer CI de `main` exitoso: run `32276924625`.
+- Primer deploy completo exitoso: run `32276924657`.
+- El deploy aplicó Terraform, publicó el frontend en `planup-web-dev-920250548109` e invalidó CloudFront.
+- Verificación posterior al deploy: `https://planup.marcos-lucas.uy` respondió HTTP 200 desde CloudFront/S3 y el objeto fue actualizado el 19 de agosto de 2026 a las 16:38 UTC.
 - Tests, build, typecheck, Terraform fmt/validate y prueba visual automatizada aprobados localmente.
 - QA visual en `design-qa.md` con resultado `passed`.
 
 ## Qué no está hecho
 
-- El nuevo CI remoto no llega todavía a `terraform plan`: falla en `Configure AWS credentials` porque `AWS_ROLE_ARN` no está disponible para el job.
-- Falta configurar el trust OIDC del role AWS para el repositorio y los eventos que ejecutarán plan/apply.
-- La cuenta activa de `gh` durante la última sesión fue `marcos-ecom`; puede leer la PR pública, pero recibió HTTP 403 al intentar listar secrets de `marcos07-uy/PlanUP`. Para configurar GitHub hay que autenticarse con una cuenta administradora del repositorio.
 - No se probó el flujo real completo con Cognito y DynamoDB desplegados.
 - No hay backend de invitaciones o aprobación de entrenadores.
 - No hay recuperación de contraseña en la interfaz.
@@ -46,39 +47,7 @@ Fecha de contexto: 18 de agosto de 2026.
 
 ## Orden recomendado para continuar
 
-### 1. Desbloquear OIDC en GitHub Actions
-
-Autenticarse en `gh` con una cuenta administradora de `marcos07-uy/PlanUP`. En el environment `production`, configurar:
-
-- secret `AWS_ROLE_ARN` con el ARN del role asumible mediante GitHub OIDC;
-- variable opcional `AWS_REGION=sa-east-1`;
-- required reviewers para exigir aprobación manual.
-
-Verificar en AWS que el trust policy del role acepte el repositorio `marcos07-uy/PlanUP` y el contexto usado por los workflows. El role también necesita acceso al backend S3 y permisos suficientes para plan/apply y para sincronizar S3 e invalidar CloudFront.
-
-### 2. Reejecutar y revisar el plan de la PR
-
-Reejecutar el workflow fallido `32207926470` o empujar un commit vacío. Confirmar que `Terraform plan` finaliza correctamente y revisar que no proponga destrucciones inesperadas. La PR debe permanecer en draft hasta completar esta revisión.
-
-### 3. Probar el deploy completo
-
-Después del merge, aprobar el environment `production` y comprobar que el workflow:
-
-1. crea y aplica el plan guardado;
-2. genera `apps/web/.env.production` desde `terraform output -raw frontend_env`;
-3. construye el frontend;
-4. sincroniza `apps/web/dist` al bucket indicado por `web_bucket`;
-5. crea la invalidación para `cloudfront_distribution_id`.
-
-### 4. Hacer una prueba con dos cuentas reales
-
-Usar un entrenador y un atleta con emails distintos. Validar alta, confirmación, vinculación, creación de sesión y lectura.
-
-### 5. Endurecer el flujo de roles
-
-Antes de invitar usuarios externos, impedir que cualquier persona se autodeclare entrenador. Una opción simple es que solo un administrador cree entrenadores.
-
-### 6. Enviar emails de Cognito desde el dominio de PlanUp
+### 1. Enviar emails de Cognito desde el dominio de PlanUp
 
 Reemplazar el remitente predeterminado `no-reply@verificationemail.com` por un remitente propio, por ejemplo `PlanUp <no-reply@planup.marcos-lucas.uy>`, usando Amazon SES.
 
@@ -96,6 +65,22 @@ Trabajo propuesto:
 
 Implementar la identidad, los registros DNS y la configuración de Cognito en Terraform. No considerar esta tarea terminada únicamente porque cambió el texto visible del remitente: la autenticación del dominio y la salida del sandbox son necesarias para una entrega real confiable.
 
+### 2. Hacer una prueba con dos cuentas reales
+
+Usar un entrenador y un atleta con emails distintos. Validar alta, confirmación, vinculación, creación de sesión y lectura.
+
+### 3. Endurecer el flujo de roles de usuario
+
+Antes de invitar usuarios externos, impedir que cualquier persona se autodeclare entrenador. Una opción simple es que solo un administrador cree entrenadores.
+
+### 4. Agregar recuperación de contraseña
+
+Implementar en la interfaz el inicio y la confirmación del flujo de recuperación de contraseña de Cognito. Incluir este mensaje en las pruebas de entregabilidad de SES.
+
+### 5. Ampliar las pruebas automatizadas
+
+Agregar pruebas de integración contra DynamoDB Local o un entorno AWS controlado y cubrir el flujo real de autenticación, vinculación y sesiones.
+
 ## Comandos para recuperar contexto rápidamente
 
 ```bash
@@ -110,14 +95,14 @@ terraform -chdir=infra init -backend=false
 terraform -chdir=infra validate
 gh auth status
 gh pr view 1 -R marcos07-uy/PlanUP
-gh run view 32207926470 -R marcos07-uy/PlanUP
+gh run view 32276924625 -R marcos07-uy/PlanUP
+gh run view 32276924657 -R marcos07-uy/PlanUP
 ```
 
-Después de configurar `AWS_ROLE_ARN`, para reejecutar el CI fallido:
+Para comprobar rápidamente la aplicación desplegada:
 
 ```bash
-gh run rerun 32207926470 -R marcos07-uy/PlanUP
-gh run watch 32207926470 -R marcos07-uy/PlanUP --exit-status
+curl -I https://planup.marcos-lucas.uy
 ```
 
 Para vista demo:
@@ -146,8 +131,8 @@ VITE_DEMO_MODE=true npm run dev --workspace @planup/web -- --host 0.0.0.0 --port
 ## Riesgos conocidos
 
 - Configurar AWS CLI con la cuenta equivocada.
-- Configurar el secret en el repositorio pero no en el environment correcto, o viceversa.
 - Dar al role OIDC permisos de apply sin limitar adecuadamente el repositorio y el contexto en su trust policy.
+- El role de CI usa `PowerUserAccess` durante la fase DEV. Separar roles de plan y apply antes de sumar colaboradores o declarar producción.
 - Aprobar un plan que destruya o reemplace recursos con datos persistentes.
 - Enviar correos desde el dominio propio sin completar DKIM, SPF y DMARC, aumentando la probabilidad de spam o suplantación.
 - Mantener SES en sandbox y asumir que podrá enviar códigos a cualquier dirección de usuario.
