@@ -40,9 +40,10 @@ try {
   await page.getByRole("button", { name: "Asignar a 2 atletas" }).click();
 
   await page.getByText("Sesión asignada a 2 atletas").waitFor();
-  await page.getByRole("heading", { name: /jueves, 27 de agosto/i }).waitFor();
+  if (await page.getByRole("button", { name: "Agregar sesión" }).count()) throw new Error("Legacy daily session editor is visible to the coach");
+  if (await page.locator(".date-strip").count()) throw new Error("Daily calendar is visible to the coach");
 
-  console.log("Planning library verification passed: create, preview, inspect, select athletes, and assign.");
+  console.log("Planning library verification passed: focused coach planning and assignment workflow.");
 } finally {
   await browser?.close();
   await server.close();
