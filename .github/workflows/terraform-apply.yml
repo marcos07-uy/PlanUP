@@ -62,5 +62,20 @@ jobs:
       - name: Terraform validate
         run: terraform -chdir=infra validate
 
+      - name: Terraform plan
+        run: terraform -chdir=infra plan -input=false -no-color -out=planup.tfplan
+
       - name: Terraform apply
-        run: terraform -chdir=infra apply -auto-approve
+        run: terraform -chdir=infra apply -input=false -auto-approve planup.tfplan
+
+      - name: Generate frontend production environment
+        run: terraform -chdir=infra output -raw frontend_env > apps/web/.env.production
+
+      - name: Build frontend
+        run: npm run build --workspace @planup/web
+
+      - name: Sync frontend to S3
+        run: aws s3 sync apps/web/dist "s3://$(terraform -chdir=infra output -raw web_bucket)" --delete
+
+      - name: Invalidate CloudFront cache
+        run: aws cloudfront create-invalidation --distribution-id "$(terraform -chdir=infra output -raw cloudfront_distribution_id)" --paths "/*"

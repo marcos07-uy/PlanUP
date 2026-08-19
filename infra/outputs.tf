@@ -22,7 +22,13 @@ output "cognito_client_id" {
 }
 
 output "web_bucket" {
-  value = module.frontend.bucket_id
+  description = "S3 bucket containing the deployed frontend."
+  value       = module.frontend.bucket_id
+}
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution ID used for cache invalidations."
+  value       = module.frontend.cloudfront_distribution_id
 }
 
 output "frontend_env" {

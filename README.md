@@ -47,14 +47,16 @@ El atleta debe registrarse e iniciar sesion al menos una vez antes de que un ent
 
 ## CI/CD
 
-GitHub Actions ejecuta tests, typecheck, build y validacion de Terraform en PRs. Al mergear a `main`, el workflow `Terraform Apply` ejecuta `terraform apply` usando OIDC contra AWS.
+GitHub Actions ejecuta tests, typecheck, build, validacion y `terraform plan` contra el estado remoto en PRs. Al mergear a `main`, el workflow `Terraform Apply` genera un plan guardado, lo aplica usando OIDC contra AWS, construye el frontend con los outputs resultantes, sincroniza los archivos con S3 e invalida CloudFront.
 
 Configure estos valores en GitHub antes de habilitar deploy:
 
 - Secret `AWS_ROLE_ARN`: role de AWS asumible por GitHub Actions.
 - Variable `AWS_REGION`: region AWS, por defecto `sa-east-1`.
 
-El backend remoto se define en `infra/backend.tf`; para trabajo local sin estado remoto puede usar `terraform -chdir=infra init -backend=false`.
+Los jobs de plan y apply usan el environment `production`. Configure required reviewers en las deployment protection rules de ese environment para exigir aprobacion manual antes de acceder a AWS.
+
+El backend remoto se define en `infra/backend.tf`. El plan de CI usa ese estado para detectar cambios reales antes del merge; para validaciones locales sin estado remoto puede usar `terraform -chdir=infra init -backend=false`.
 
 ## Alcance del MVP
 
