@@ -83,6 +83,8 @@ header { height: 86px; display: flex; align-items: center; justify-content: spac
 .planning-detail .block-icon { width: 58px; min-height: 58px; }
 .planning-detail .workout-block h3 { font-size: 21px; }
 .planning-detail .workout-block p { font-size: 13px; }
+.planning-loading { color: #666; font-size: 13px; }
+.load-more { width: 100%; margin-top: 12px; }
 .assign-panel { display: grid; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 3px solid var(--dark); }
 .assignment-date { margin: 0; }
 .assign-heading { display: flex; align-items: center; justify-content: space-between; color: var(--dark); font-size: 13px; }

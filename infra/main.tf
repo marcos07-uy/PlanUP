@@ -12,6 +12,7 @@ locals {
     "POST /coach-invitations/{coachId}/accept",
     "POST /coach-invitations/{coachId}/reject",
     "GET /coach-sessions",
+    "GET /coach-sessions/{date}/{sessionId}",
     "POST /coach-sessions",
     "POST /coach-sessions/{date}/{sessionId}/assign",
     "GET /athletes/{athleteId}/sessions",

@@ -23,7 +23,7 @@ try {
 
   await page.goto(appUrl);
   await page.getByRole("heading", { name: "Planificaciones" }).waitFor();
-  await page.getByText(/creada \d{2}\/\d{2}\/\d{4}/).waitFor();
+  await page.getByText(/Creada \d{2}\/\d{2}\/\d{4}/).waitFor();
   await page.getByRole("button", { name: /Fuerza y AMRAP/ }).hover();
   await page.getByRole("tooltip").filter({ hasText: "Back squat 5 × 5" }).waitFor();
 

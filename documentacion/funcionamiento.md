@@ -68,8 +68,8 @@ La interfaz responde de forma genérica al solicitar el código para no revelar 
 
 ## Flujo de programación
 
-1. La PWA carga la biblioteca completa de planificaciones del entrenador.
-2. El entrenador puede crear una planificación reutilizable o seleccionar una existente. Cada tarjeta muestra un resumen al pasar el cursor o enfocarla, y la selección abre el contenido completo debajo de la biblioteca.
+1. La PWA carga las 20 planificaciones más recientes y permite solicitar páginas adicionales con **Cargar más planificaciones**.
+2. El listado transporta solamente nombre, fecha y resumen. Cada tarjeta muestra ese resumen al pasar el cursor o enfocarla; al seleccionarla, la PWA solicita el contenido completo y lo abre debajo de la biblioteca.
 3. Elige una fecha de destino y uno o más atletas vinculados.
 4. La API valida todos los vínculos aceptados y copia la planificación a cada atleta en la fecha elegida.
 5. Si ya existía una sesión del mismo coach para un atleta en esa fecha, la asignación reemplaza su contenido. Las sesiones de otros coaches permanecen separadas.
@@ -90,7 +90,8 @@ Todos requieren un JWT de Cognito.
 | `GET` | `/coach-invitations` | Atleta | Lista invitaciones pendientes. |
 | `POST` | `/coach-invitations/{coachId}/accept` | Atleta | Acepta una invitación y crea el vínculo. |
 | `POST` | `/coach-invitations/{coachId}/reject` | Atleta | Rechaza una invitación. |
-| `GET` | `/coach-sessions` | Entrenador | Lista su biblioteca de planificaciones. |
+| `GET` | `/coach-sessions?limit=&cursor=` | Entrenador | Lista resúmenes paginados; devuelve un cursor opaco cuando hay otra página. |
+| `GET` | `/coach-sessions/{date}/{id}` | Entrenador | Obtiene el contenido completo de una planificación. |
 | `POST` | `/coach-sessions` | Entrenador | Crea una planificación reutilizable. |
 | `POST` | `/coach-sessions/{date}/{id}/assign` | Entrenador | Asigna una planificación a varios atletas. |
 | `GET` | `/athletes/{id}/sessions?coachId=&from=&to=` | Ambos | Lista sesiones del coach indicado en un rango. |
