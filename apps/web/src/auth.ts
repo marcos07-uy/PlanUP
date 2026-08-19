@@ -55,7 +55,25 @@ export function confirm(email: string, code: string): Promise<void> {
   });
 }
 
+export function requestPasswordReset(email: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    new CognitoUser({ Username: email, Pool: pool }).forgotPassword({
+      onSuccess: () => resolve(),
+      onFailure: reject,
+      inputVerificationCode: () => resolve(),
+    });
+  });
+}
+
+export function confirmPasswordReset(email: string, code: string, password: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    new CognitoUser({ Username: email, Pool: pool }).confirmPassword(code, password, {
+      onSuccess: () => resolve(),
+      onFailure: reject,
+    });
+  });
+}
+
 export function signOut() {
   pool.getCurrentUser()?.signOut();
 }
-

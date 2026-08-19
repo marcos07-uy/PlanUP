@@ -8,6 +8,7 @@ Puede:
 
 - registrarse y confirmar su email;
 - iniciar sesión;
+- recuperar su contraseña mediante un código enviado por email;
 - ver atletas vinculados;
 - vincular un atleta registrado mediante su email;
 - consultar sesiones del atleta por rango de fechas;
@@ -20,6 +21,7 @@ Puede:
 
 - registrarse y confirmar su email;
 - iniciar sesión;
+- recuperar su contraseña mediante un código enviado por email;
 - consultar únicamente sus propias sesiones;
 - navegar entre fechas.
 
@@ -50,6 +52,12 @@ sequenceDiagram
 ```
 
 El atleta debe iniciar sesión al menos una vez antes de ser vinculado. `GET /me` crea su perfil consultable por email en DynamoDB.
+
+## Recuperación de contraseña
+
+Desde el inicio de sesión, el usuario selecciona **Olvidé mi contraseña**, ingresa su email y recibe un código de Cognito. Luego informa ese código y una contraseña nueva que cumpla la política del User Pool. Cognito valida el código y actualiza la contraseña sin intervención de la API ni de DynamoDB.
+
+La interfaz responde de forma genérica al solicitar el código para no revelar si una dirección está registrada. Mientras SES permanezca en sandbox, el email de recuperación solo puede enviarse a destinatarios permitidos por SES.
 
 ## Flujo de programación
 
@@ -108,4 +116,3 @@ El modo demo permite:
 - comprobar la adaptación móvil y de escritorio.
 
 Los cambios se pierden al recargar la página.
-
