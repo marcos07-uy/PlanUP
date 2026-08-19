@@ -105,10 +105,6 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .workout-block h3 { display: inline-block; margin: 0 0 13px; padding: 7px 30px 7px 13px; color: #fff; background: var(--dark); font: italic 800 28px "Barlow Condensed"; text-transform: uppercase; clip-path: polygon(0 0,100% 0,88% 100%,0 100%); }
 .workout-block p { margin: 0; white-space: pre-wrap; font-size: 16px; line-height: 1.45; }
 .workout-updated { padding: 11px 0; color: #690006; font-size: 11px; text-align: right; text-transform: uppercase; }
-.edit-session { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-top: 8px; border: 3px solid #fff; padding: 16px; color: var(--red); background: #fff; font: italic 800 28px "Barlow Condensed"; text-transform: uppercase; }
-.editor { padding: 24px; background: var(--paper); box-shadow: 9px 9px 0 var(--dark); }
-.editor textarea { min-height: 360px; resize: vertical; font: 500 15px/1.6 "Inter"; }
-.editor > div { display: flex; justify-content: flex-end; gap: 10px; }
 .empty { display: grid; place-items: center; padding: 70px 24px; border: 4px solid var(--dark); text-align: center; }
 .empty h3 { margin: 10px 0 5px; font: italic 800 30px "Barlow Condensed"; text-transform: uppercase; }
 .empty p { margin: 0 0 18px; }
@@ -157,8 +153,6 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .workout-block p { font-size: 12.5px; line-height: 1.3; }
   .workout-updated { padding: 6px 0; font-size: 9px; }
   .edit-session { margin-top: 3px; padding: 11px; font-size: 23px; }
-  .editor { margin-inline: -3px; padding: 18px; box-shadow: 6px 6px 0 var(--dark); }
-  .editor textarea { min-height: 320px; }
 }
 
 @media (min-width: 761px) {
