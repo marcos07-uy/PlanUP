@@ -51,8 +51,9 @@ GitHub Actions ejecuta tests, typecheck, build, validacion y `terraform plan` co
 
 Configure estos valores en GitHub antes de habilitar deploy:
 
-- Secret `AWS_ROLE_ARN`: role de AWS asumible por GitHub Actions.
 - Variable `AWS_REGION`: region AWS, por defecto `sa-east-1`.
+
+El ARN del role OIDC no es secreto y se declara directamente en los workflows. Terraform administra el role `planup-dev-github-actions` y limita su trust al repositorio `marcos07-uy/PlanUP` y al environment `production`.
 
 Los jobs de plan y apply usan el environment `production`. Configure required reviewers en las deployment protection rules de ese environment para exigir aprobacion manual antes de acceder a AWS.
 

@@ -31,6 +31,11 @@ output "cloudfront_distribution_id" {
   value       = module.frontend.cloudfront_distribution_id
 }
 
+output "github_actions_role_arn" {
+  description = "IAM role assumed by the GitHub Actions plan and deploy jobs."
+  value       = module.cicd.role_arn
+}
+
 output "frontend_env" {
   description = "Values to place in apps/web/.env.production before building the frontend."
   value       = <<-EOT

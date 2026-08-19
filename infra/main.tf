@@ -63,3 +63,11 @@ module "budget" {
   name                = "${local.name}-monthly"
   billing_alert_email = var.billing_alert_email
 }
+
+module "cicd" {
+  source = "./modules/cicd"
+
+  role_name          = "${local.name}-github-actions"
+  github_repository  = var.github_repository
+  github_environment = var.github_environment
+}

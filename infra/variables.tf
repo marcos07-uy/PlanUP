@@ -33,3 +33,15 @@ variable "frontend_domain_name" {
   type        = string
   default     = "planup.marcos-lucas.uy"
 }
+
+variable "github_repository" {
+  description = "GitHub repository allowed to assume the deployment role."
+  type        = string
+  default     = "marcos07-uy/PlanUP"
+}
+
+variable "github_environment" {
+  description = "GitHub environment allowed to assume the deployment role."
+  type        = string
+  default     = "production"
+}
