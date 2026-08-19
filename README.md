@@ -45,6 +45,16 @@ Luego de aplicar Terraform:
 
 El atleta debe registrarse e iniciar sesion al menos una vez antes de que un entrenador pueda vincularlo por email. Para limitar el costo, configure `billing_alert_email` en `terraform.tfvars`; Terraform creara alertas al 80% previsto y al 100% real del presupuesto mensual de USD 5.
 
+## Email transaccional
+
+Terraform configura Amazon SES y Cognito para enviar verificaciones desde `PlanUp <no-reply@planup.marcos-lucas.uy>`. La identidad usa Easy DKIM, el MAIL FROM `mail.planup.marcos-lucas.uy`, SPF y una politica DMARC inicialmente en modo monitoreo (`p=none`).
+
+La solicitud para sacar SES del sandbox de `sa-east-1` fue enviada el 19 de agosto de 2026 y permanece pendiente de revision por AWS. Mientras `ProductionAccessEnabled` sea `false`, SES solo puede enviar a destinatarios verificados. Consulte el estado con:
+
+```bash
+aws sesv2 get-account --profile personal --region sa-east-1
+```
+
 ## CI/CD
 
 GitHub Actions ejecuta tests, typecheck, build, validacion y `terraform plan` contra el estado remoto en PRs. Al mergear a `main`, el workflow `Terraform Apply` genera un plan guardado, lo aplica usando OIDC contra AWS, construye el frontend con los outputs resultantes, sincroniza los archivos con S3 e invalida CloudFront.

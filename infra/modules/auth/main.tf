@@ -32,6 +32,23 @@ resource "aws_cognito_user_pool" "planup" {
   user_attribute_update_settings {
     attributes_require_verification_before_update = ["email"]
   }
+
+  email_configuration {
+    email_sending_account = "DEVELOPER"
+    source_arn            = var.email_identity_arn
+    from_email_address    = var.from_email_address
+  }
+
+  verification_message_template {
+    default_email_option = "CONFIRM_WITH_CODE"
+    email_subject        = "Tu código de verificación de PlanUp"
+    email_message        = <<-HTML
+      <p>Hola,</p>
+      <p>Usá el siguiente código para continuar en PlanUp:</p>
+      <p style="font-size: 24px; font-weight: 700; letter-spacing: 4px;">{####}</p>
+      <p>Si no solicitaste este código, podés ignorar este mensaje.</p>
+    HTML
+  }
 }
 
 resource "aws_cognito_user_pool_client" "web" {

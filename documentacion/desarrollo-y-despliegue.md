@@ -131,6 +131,31 @@ aws cloudfront create-invalidation --distribution-id E1V1H6JQTHD2VW --paths '/*'
 
 El output `deploy_frontend_commands` entrega los mismos comandos con los valores reales del bucket y la distribución.
 
+## Email de Cognito con Amazon SES
+
+El módulo `infra/modules/email` prepara el correo transaccional de autenticación:
+
+- identidad SES `planup.marcos-lucas.uy` en `sa-east-1`;
+- tres registros Easy DKIM en Route53;
+- MAIL FROM `mail.planup.marcos-lucas.uy`;
+- SPF alineado con SES;
+- DMARC en modo monitoreo con `p=none`;
+- remitente visible `PlanUp <no-reply@planup.marcos-lucas.uy>`;
+- asunto y contenido de verificación personalizados en Cognito.
+
+El primer apply puede esperar varios minutos mientras SES verifica el TXT de identidad. No interrumpirlo mientras `aws_ses_domain_identity_verification` siga creando el recurso.
+
+La solicitud de acceso a producción de SES fue enviada el 19 de agosto de 2026. Verificar su estado antes de probar direcciones no verificadas:
+
+```bash
+aws sesv2 get-account \
+  --profile personal \
+  --region sa-east-1 \
+  --query '{ProductionAccessEnabled:ProductionAccessEnabled,Review:Details.ReviewDetails}'
+```
+
+Cuando AWS apruebe la solicitud y la infraestructura esté aplicada, probar registro, reenvío de código y recuperación de contraseña en Gmail y Outlook. En cada mensaje recibido, revisar los encabezados y confirmar `spf=pass`, `dkim=pass` y `dmarc=pass`.
+
 ## Prueba funcional después del despliegue
 
 1. Abrir `app_url`.
