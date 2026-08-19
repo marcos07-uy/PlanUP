@@ -53,7 +53,7 @@ Configure estos valores en GitHub antes de habilitar deploy:
 
 - Variable `AWS_REGION`: region AWS, por defecto `sa-east-1`.
 
-El ARN del role OIDC no es secreto y se declara directamente en los workflows. Terraform administra el role `planup-dev-github-actions` y limita su trust al repositorio `marcos07-uy/PlanUP` y al environment `production`.
+El ARN del role OIDC no es secreto y se declara directamente en los workflows. Terraform administra el role `planup-dev-github-actions` y limita su trust al subject personalizado de GitHub `repo:marcos07-uy@171387849/PlanUP@1338801998:environment:production`, que identifica al repositorio y al environment `production` mediante sus IDs estables.
 
 Los jobs de plan y apply usan el environment `production`. Configure required reviewers en las deployment protection rules de ese environment para exigir aprobacion manual antes de acceder a AWS.
 

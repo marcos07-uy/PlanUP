@@ -34,14 +34,8 @@ variable "frontend_domain_name" {
   default     = "planup.marcos-lucas.uy"
 }
 
-variable "github_repository" {
-  description = "GitHub repository allowed to assume the deployment role."
+variable "github_oidc_subject" {
+  description = "Exact customized GitHub OIDC subject allowed to assume the deployment role."
   type        = string
-  default     = "marcos07-uy/PlanUP"
-}
-
-variable "github_environment" {
-  description = "GitHub environment allowed to assume the deployment role."
-  type        = string
-  default     = "production"
+  default     = "repo:marcos07-uy@171387849/PlanUP@1338801998:environment:production"
 }

@@ -3,12 +3,7 @@ variable "role_name" {
   type        = string
 }
 
-variable "github_repository" {
-  description = "GitHub repository in owner/name format."
-  type        = string
-}
-
-variable "github_environment" {
-  description = "GitHub environment included in the OIDC subject."
+variable "github_oidc_subject" {
+  description = "Exact GitHub OIDC subject allowed to assume the role."
   type        = string
 }

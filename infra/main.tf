@@ -67,7 +67,6 @@ module "budget" {
 module "cicd" {
   source = "./modules/cicd"
 
-  role_name          = "${local.name}-github-actions"
-  github_repository  = var.github_repository
-  github_environment = var.github_environment
+  role_name           = "${local.name}-github-actions"
+  github_oidc_subject = var.github_oidc_subject
 }
