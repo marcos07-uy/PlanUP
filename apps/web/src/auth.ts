@@ -55,6 +55,14 @@ export function confirm(email: string, code: string): Promise<void> {
   });
 }
 
+export function resendConfirmation(email: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    new CognitoUser({ Username: email, Pool: pool }).resendConfirmationCode((error) =>
+      error ? reject(error) : resolve(),
+    );
+  });
+}
+
 export function requestPasswordReset(email: string): Promise<void> {
   return new Promise((resolve, reject) => {
     new CognitoUser({ Username: email, Pool: pool }).forgotPassword({

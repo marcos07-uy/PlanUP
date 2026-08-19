@@ -20,6 +20,9 @@ class MemoryDb {
       ExpressionAttributeValues?: Record<string, string>;
       ConditionExpression?: string;
       TransactItems?: Array<{ Put?: { Item: Item }; Delete?: { Key: { PK: string; SK: string } } }>;
+      ExclusiveStartKey?: { PK: string; SK: string };
+      Limit?: number;
+      ScanIndexForward?: boolean;
     };
 
     if (command.constructor.name === "PutCommand") {
@@ -61,10 +64,20 @@ class MemoryDb {
       if (values[":athlete"]) {
         return { Items: items.filter((item) => item.PK === values[":pk"] && item.SK.startsWith(values[":athlete"])) };
       }
+      let matches = items
+        .filter((item) => item.PK === values[":pk"] && item.SK >= values[":from"] && item.SK <= values[":to"])
+        .sort((a, b) => a.SK.localeCompare(b.SK));
+      if (input.ScanIndexForward === false) matches.reverse();
+      if (input.ExclusiveStartKey) {
+        const startIndex = matches.findIndex((item) => item.PK === input.ExclusiveStartKey?.PK && item.SK === input.ExclusiveStartKey?.SK);
+        if (startIndex >= 0) matches = matches.slice(startIndex + 1);
+      }
+      const page = input.Limit ? matches.slice(0, input.Limit) : matches;
       return {
-        Items: items
-          .filter((item) => item.PK === values[":pk"] && item.SK >= values[":from"] && item.SK <= values[":to"])
-          .sort((a, b) => a.SK.localeCompare(b.SK)),
+        Items: page,
+        LastEvaluatedKey: input.Limit && matches.length > input.Limit
+          ? { PK: page.at(-1)?.PK, SK: page.at(-1)?.SK }
+          : undefined,
       };
     }
 
@@ -189,9 +202,39 @@ describe("PlanUp API handler", () => {
     const listResult = await invoke(db, event("GET", "/coach-sessions", coach));
 
     assert.equal(listResult.statusCode, 200);
-    assert.equal(listResult.json.length, 1);
-    assert.equal(listResult.json[0].title, "Fuerza y AMRAP");
-    assert.equal(listResult.json[0].content, "==warmup\nMove\n\n==wod\nTrain");
+    assert.equal(listResult.json.items.length, 1);
+    assert.equal(listResult.json.items[0].title, "Fuerza y AMRAP");
+    assert.equal(listResult.json.items[0].summary, "warmup Move wod Train");
+    assert.equal(listResult.json.items[0].content, undefined);
+
+    const detailResult = await invoke(db, event("GET", `/coach-sessions/2026-08-18/${createResult.json.id}`, coach));
+    assert.equal(detailResult.json.content, "==warmup\nMove\n\n==wod\nTrain");
+  });
+
+  it("paginates coach planning summaries with an opaque cursor", async () => {
+    db.seed(...[1, 2, 3].map((day) => ({
+      PK: "COACH#coach-1",
+      SK: `COACH_SESSION#2026-08-0${day}#plan-${day}`,
+      entityType: "COACH_SESSION",
+      id: `plan-${day}`,
+      coachId: "coach-1",
+      title: `Plan ${day}`,
+      date: `2026-08-0${day}`,
+      content: `==wod\nDay ${day}`,
+      updatedAt: `2026-08-0${day}T00:00:00.000Z`,
+    })));
+
+    const first = await invoke(db, event("GET", "/coach-sessions", coach, { query: { limit: "2" } }));
+    const second = await invoke(db, event("GET", "/coach-sessions", coach, { query: { limit: "2", cursor: first.json.nextCursor } }));
+
+    assert.deepEqual(first.json.items.map((item: { id: string }) => item.id), ["plan-3", "plan-2"]);
+    assert.equal(typeof first.json.nextCursor, "string");
+    assert.deepEqual(second.json.items.map((item: { id: string }) => item.id), ["plan-1"]);
+    assert.equal(second.json.nextCursor, undefined);
+
+    const foreignCursor = Buffer.from(JSON.stringify({ PK: "COACH#other", SK: "COACH_SESSION#2026-08-03#plan-3" })).toString("base64url");
+    const invalid = await invoke(db, event("GET", "/coach-sessions", coach, { query: { cursor: foreignCursor } }));
+    assert.equal(invalid.statusCode, 400);
   });
 
   it("assigns one coach planning to multiple linked athletes on a selected date", async () => {

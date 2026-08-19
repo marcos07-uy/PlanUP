@@ -107,11 +107,12 @@ Hay como máximo una sesión por combinación de atleta, coach y fecha. Dos coac
   "title": "Fuerza y AMRAP",
   "date": "2026-08-18",
   "content": "==warmup\n...\n\n==wod\n...",
+  "summary": "warmup ... wod ...",
   "updatedAt": "2026-08-18T20:00:00.000Z"
 }
 ```
 
-La fecha identifica cuándo se creó la planificación y forma parte de su clave. No limita su reutilización: al asignarla, la API recibe una fecha de destino independiente y crea o reemplaza la sesión diaria de cada atleta seleccionado.
+La fecha identifica cuándo se creó la planificación y forma parte de su clave. No limita su reutilización: al asignarla, la API recibe una fecha de destino independiente y crea o reemplaza la sesión diaria de cada atleta seleccionado. El resumen, limitado a 180 caracteres, alimenta las tarjetas sin enviar el contenido completo.
 
 ## Patrones de acceso
 
@@ -123,7 +124,8 @@ La fecha identifica cuándo se creó la planificación y forma parte de su clave
 | Listar coaches de un atleta | `Query PK = ATHLETE#athlete`, rango `COACH#` a `COACH#~`. |
 | Listar invitaciones | `Query PK = ATHLETE#athlete`, rango `INVITATION#` a `INVITATION#~`. |
 | Verificar vínculo | `GetItem(COACH#coach, ATHLETE#athlete)` o su relación inversa. |
-| Listar planificaciones del coach | `Query PK = COACH#coach`, `SK BETWEEN COACH_SESSION#0000-01-01# AND COACH_SESSION#9999-12-31#~`. |
+| Listar planificaciones del coach | `Query PK = COACH#coach`, orden descendente, `Limit` máximo 50 y `ExclusiveStartKey` proveniente de un cursor opaco. |
+| Obtener una planificación | `GetItem(COACH#coach, COACH_SESSION#date#id)`. |
 | Asignar planificación | `GetItem` de la planificación, validación de vínculos y un `PutItem` por atleta/fecha. |
 | Listar sesiones por coach y fechas | `Query PK = ATHLETE#athlete`, `SK BETWEEN SESSION#coach#from AND SESSION#coach#to`. |
 | Guardar sesión | `PutItem(ATHLETE#athlete, SESSION#coach#date)`. |

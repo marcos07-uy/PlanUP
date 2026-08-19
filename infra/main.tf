@@ -12,6 +12,7 @@ locals {
     "POST /coach-invitations/{coachId}/accept",
     "POST /coach-invitations/{coachId}/reject",
     "GET /coach-sessions",
+    "GET /coach-sessions/{date}/{sessionId}",
     "POST /coach-sessions",
     "POST /coach-sessions/{date}/{sessionId}/assign",
     "GET /athletes/{athleteId}/sessions",
@@ -41,6 +42,7 @@ module "auth" {
   name               = local.name
   email_identity_arn = module.email.identity_arn
   from_email_address = "PlanUp <${var.email_from_address}>"
+  use_ses_email      = var.cognito_use_ses_email
 }
 
 module "api" {

@@ -12,3 +12,8 @@ variable "from_email_address" {
   description = "Friendly FROM address displayed in Cognito messages."
   type        = string
 }
+
+variable "use_ses_email" {
+  description = "Use the custom SES identity instead of Cognito's default email service."
+  type        = bool
+}

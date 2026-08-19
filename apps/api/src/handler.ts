@@ -102,6 +102,7 @@ function coachSessionFromItem(item: Record<string, unknown>) {
     title: item.title,
     date: item.date,
     content: item.content,
+    summary: item.summary ?? planningSummary(String(item.content ?? "")),
     updatedAt: item.updatedAt,
   };
 }
@@ -126,6 +127,26 @@ function assertTitle(value: string | undefined) {
     throw Object.assign(new Error("Planning title must contain between 1 and 120 characters"), { statusCode: 400 });
   }
   return title;
+}
+
+function planningSummary(content: string) {
+  const summary = content.replace(/^==\s*/gm, "").replace(/\s+/g, " ").trim();
+  return summary.length > 180 ? `${summary.slice(0, 177)}…` : summary;
+}
+
+function encodeCursor(key: Record<string, unknown> | undefined) {
+  return key ? Buffer.from(JSON.stringify(key)).toString("base64url") : undefined;
+}
+
+function decodeCursor(value: string | undefined) {
+  if (!value) return undefined;
+  try {
+    const key = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as { PK?: unknown; SK?: unknown };
+    if (typeof key.PK !== "string" || typeof key.SK !== "string") throw new Error("Invalid key");
+    return { PK: key.PK, SK: key.SK };
+  } catch {
+    throw Object.assign(new Error("Invalid planning cursor"), { statusCode: 400 });
+  }
 }
 
 export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJWTAuthorizer {
@@ -268,6 +289,10 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       if (identity.role !== "coach") return response(403, { message: "Only coaches can manage coach sessions" });
       const from = event.queryStringParameters?.from ?? "0000-01-01";
       const to = event.queryStringParameters?.to ?? "9999-12-31";
+      const requestedLimit = Number(event.queryStringParameters?.limit ?? 20);
+      const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 50) : 20;
+      const cursor = decodeCursor(event.queryStringParameters?.cursor);
+      if (cursor && cursor.PK !== `COACH#${identity.id}`) return response(400, { message: "Invalid planning cursor" });
       const result = await database.send(new QueryCommand({
         TableName: tableName,
         KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to",
@@ -276,8 +301,33 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
           ":from": `COACH_SESSION#${from}#`,
           ":to": `COACH_SESSION#${to}#~`,
         },
+        ExclusiveStartKey: cursor,
+        Limit: limit,
+        ScanIndexForward: false,
       }));
-      return response(200, (result.Items ?? []).map(coachSessionFromItem));
+      return response(200, {
+        items: (result.Items ?? []).map((item) => ({
+          id: item.id,
+          title: item.title,
+          date: item.date,
+          summary: item.summary ?? planningSummary(String(item.content ?? "")),
+          updatedAt: item.updatedAt,
+        })),
+        nextCursor: encodeCursor(result.LastEvaluatedKey),
+      });
+    }
+
+    const coachSessionDetailMatch = path.match(/^\/coach-sessions\/([^/]+)\/([^/]+)$/);
+    if (coachSessionDetailMatch && method === "GET") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can manage coach sessions" });
+      const date = decodeURIComponent(coachSessionDetailMatch[1]);
+      const sessionId = decodeURIComponent(coachSessionDetailMatch[2]);
+      assertDate(date);
+      const result = await database.send(new GetCommand({
+        TableName: tableName,
+        Key: { PK: `COACH#${identity.id}`, SK: `COACH_SESSION#${date}#${sessionId}` },
+      }));
+      return result.Item ? response(200, coachSessionFromItem(result.Item)) : response(404, { message: "Coach session not found" });
     }
 
     if (path === "/coach-sessions" && method === "POST") {
@@ -296,6 +346,7 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         title,
         date: body.date,
         content,
+        summary: planningSummary(content),
         updatedAt: new Date().toISOString(),
       };
       await database.send(new PutCommand({ TableName: tableName, Item: item }));

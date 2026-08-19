@@ -18,13 +18,14 @@ import {
   confirm,
   confirmPasswordReset,
   currentToken,
+  resendConfirmation,
   requestPasswordReset,
   signIn,
   signOut,
   signUp,
 } from "./auth";
 import { demoAthleteProfile, demoAthletes, demoCoachInvitations, demoCoaches, demoCoachSessions, demoProfile, demoSessions } from "./demo";
-import type { Athlete, Coach, CoachInvitation, CoachSession, Role, TrainingSession, UserProfile } from "./types";
+import type { Athlete, Coach, CoachInvitation, CoachSession, CoachSessionSummary, Role, TrainingSession, UserProfile } from "./types";
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === "true";
 const demoUserProfile = import.meta.env.VITE_DEMO_ROLE === "athlete" ? demoAthleteProfile : demoProfile;
@@ -84,6 +85,14 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(() => setResendCooldown((seconds) => Math.max(0, seconds - 1)), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
 
   function changeMode(nextMode: typeof mode) {
     setMode(nextMode);
@@ -91,6 +100,7 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
     setNotice("");
     setCode("");
     setPassword("");
+    setResendCooldown(0);
   }
 
   async function submit(event: FormEvent) {
@@ -116,8 +126,30 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
         const nextToken = await signIn(email, password);
         onAuthenticated(nextToken, await api.me(nextToken));
       }
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos completar la operación"); }
+    } catch (cause) {
+      if (mode === "login" && cause instanceof Error && cause.name === "UserNotConfirmedException") {
+        setMode("confirm");
+        setPassword("");
+        setNotice("Tu cuenta todavía no está confirmada. Podés solicitar un código nuevo.");
+      } else {
+        setError(cause instanceof Error ? cause.message : "No pudimos completar la operación");
+      }
+    }
     finally { setBusy(false); }
+  }
+
+  async function resendCode() {
+    if (resending || resendCooldown > 0) return;
+    setError(""); setNotice(""); setResending(true);
+    try {
+      await resendConfirmation(email);
+      setNotice("Enviamos un nuevo código de verificación. Revisá también spam y promociones.");
+      setResendCooldown(60);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "No pudimos reenviar el código");
+    } finally {
+      setResending(false);
+    }
   }
 
   const isPasswordMode = mode === "login" || mode === "signup" || mode === "reset";
@@ -149,6 +181,9 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
       {notice && <p className="notice" role="status">{notice}</p>}
       {error && <p className="error">{error}</p>}
       <button className="primary" disabled={busy}>{busy ? "Procesando…" : submitLabel}</button>
+      {mode === "confirm" && <button type="button" className="text-button" disabled={resending || resendCooldown > 0} onClick={resendCode}>
+        {resending ? "Reenviando…" : resendCooldown > 0 ? `Reenviar código en ${resendCooldown}s` : "Reenviar código"}
+      </button>}
       {mode === "login" && <button type="button" className="text-button" onClick={() => changeMode("forgot")}>Olvidé mi contraseña</button>}
       {(mode === "login" || mode === "signup") && <button type="button" className="text-button" onClick={() => changeMode(mode === "login" ? "signup" : "login")}>{mode === "login" ? "No tengo cuenta" : "Ya tengo cuenta"}</button>}
       {(mode === "confirm" || mode === "forgot" || mode === "reset") && <button type="button" className="text-button" onClick={() => changeMode("login")}>Volver al inicio de sesión</button>}
@@ -163,7 +198,10 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   const [coachInvitations, setCoachInvitations] = useState<CoachInvitation[]>(demoMode && profile.role === "athlete" ? demoCoachInvitations : []);
   const [selectedCoachId, setSelectedCoachId] = useState<string>(demoMode && profile.role === "athlete" ? demoCoaches[0]?.id ?? "" : "");
   const [sessions, setSessions] = useState<TrainingSession[]>([]);
-  const [coachSessions, setCoachSessions] = useState<CoachSession[]>(demoMode && profile.role === "coach" ? demoCoachSessions : []);
+  const [coachSessions, setCoachSessions] = useState<CoachSessionSummary[]>(demoMode && profile.role === "coach" ? demoCoachSessions : []);
+  const [selectedCoachSession, setSelectedCoachSession] = useState<CoachSession | null>(demoMode && profile.role === "coach" ? demoCoachSessions[0] ?? null : null);
+  const [planningCursor, setPlanningCursor] = useState<string | undefined>();
+  const [loadingPlans, setLoadingPlans] = useState(false);
   const [selectedCoachSessionId, setSelectedCoachSessionId] = useState<string | null>(demoMode && profile.role === "coach" ? demoCoachSessions[0]?.id ?? null : null);
   const [coachSessionTitle, setCoachSessionTitle] = useState("");
   const [coachSessionContent, setCoachSessionContent] = useState("");
@@ -204,16 +242,27 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
 
   useEffect(() => {
     if (demoMode || profile.role !== "coach") return;
-    api.coachSessions(token).then(setCoachSessions);
+    api.coachSessions(token).then((page) => { setCoachSessions(page.items); setPlanningCursor(page.nextCursor); });
   }, [profile.role, token]);
 
   const session = useMemo(() => sessions.find((item) => item.athleteId === selected?.id && item.date === selectedDate), [sessions, selected, selectedDate]);
   const planningLibrary = useMemo(() => [...coachSessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [coachSessions]);
-  const selectedCoachSession = useMemo(() => coachSessions.find((item) => item.id === selectedCoachSessionId) ?? planningLibrary[0] ?? null, [coachSessions, planningLibrary, selectedCoachSessionId]);
+  const selectedCoachSummary = useMemo(() => coachSessions.find((item) => item.id === selectedCoachSessionId) ?? planningLibrary[0] ?? null, [coachSessions, planningLibrary, selectedCoachSessionId]);
   useEffect(() => setContent(session?.content ?? ""), [session]);
   useEffect(() => {
     if (!selectedCoachSessionId && planningLibrary[0]) setSelectedCoachSessionId(planningLibrary[0].id);
   }, [planningLibrary, selectedCoachSessionId]);
+  useEffect(() => {
+    if (!selectedCoachSummary) { setSelectedCoachSession(null); return; }
+    if (demoMode) {
+      setSelectedCoachSession((current) => current?.id === selectedCoachSummary.id
+        ? current
+        : demoCoachSessions.find((item) => item.id === selectedCoachSummary.id) ?? null);
+      return;
+    }
+    setSelectedCoachSession(null);
+    api.coachSession(token, selectedCoachSummary).then(setSelectedCoachSession);
+  }, [selectedCoachSummary, token]);
 
   async function save() {
     if (!selected || !activeCoachId || !content.trim()) return;
@@ -245,9 +294,11 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   async function createCoachSession() {
     if (!coachSessionTitle.trim() || !coachSessionContent.trim()) return;
     const created = demoMode
-      ? { id: `coach-session-${Date.now()}`, title: coachSessionTitle.trim(), date: today(), content: coachSessionContent, updatedAt: new Date().toISOString() }
+      ? { id: `coach-session-${Date.now()}`, title: coachSessionTitle.trim(), date: today(), content: coachSessionContent, summary: planningSummary(coachSessionContent), updatedAt: new Date().toISOString() }
       : await api.createCoachSession(token, today(), coachSessionTitle, coachSessionContent);
-    setCoachSessions((items) => [...items, created]);
+    const { content: _content, ...summary } = created;
+    setCoachSessions((items) => [summary, ...items]);
+    setSelectedCoachSession(created);
     setSelectedCoachSessionId(created.id);
     setCoachSessionTitle("");
     setCoachSessionContent("");
@@ -255,13 +306,23 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
     setNotice("Sesión base creada"); setTimeout(() => setNotice(""), 2200);
   }
 
+  async function loadMorePlans() {
+    if (!planningCursor || loadingPlans) return;
+    setLoadingPlans(true);
+    try {
+      const page = await api.coachSessions(token, planningCursor);
+      setCoachSessions((items) => [...items, ...page.items.filter((next) => !items.some((item) => item.id === next.id))]);
+      setPlanningCursor(page.nextCursor);
+    } finally { setLoadingPlans(false); }
+  }
+
   function toggleAssignment(athleteId: string) {
     setAssignAthleteIds((items) => items.includes(athleteId) ? items.filter((id) => id !== athleteId) : [...items, athleteId]);
   }
 
   async function assignCoachSession() {
-    if (!selectedCoachSession || !assignAthleteIds.length || !assignmentDate) return;
-    if (!demoMode) await api.assignCoachSession(token, selectedCoachSession, assignmentDate, assignAthleteIds);
+    if (!selectedCoachSummary || !selectedCoachSession || !assignAthleteIds.length || !assignmentDate) return;
+    if (!demoMode) await api.assignCoachSession(token, selectedCoachSummary, assignmentDate, assignAthleteIds);
     const assignedSessions = assignAthleteIds.map((athleteId) => ({
       athleteId,
       coachId: profile.id,
@@ -293,8 +354,11 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
         {profile.role === "coach" && <section className="coach-session-panel">
           <div className="coach-session-title"><div><span className="eyebrow">Biblioteca del entrenador</span><h2>Planificaciones</h2></div><button className="secondary compact" onClick={() => setCreatingCoachSession((value) => !value)}>{creatingCoachSession ? "Cerrar" : "Nueva planificación"}</button></div>
           {creatingCoachSession && <div className="coach-session-editor"><input aria-label="Nombre de la planificación" autoFocus maxLength={120} value={coachSessionTitle} onChange={(event) => setCoachSessionTitle(event.target.value)} placeholder="Ej.: Fuerza y AMRAP" /><textarea aria-label="Contenido de la planificación" value={coachSessionContent} onChange={(event) => setCoachSessionContent(event.target.value)} placeholder={"==warmup\n\n==fuerza\n\n==wod"} /><button className="primary compact" disabled={!coachSessionTitle.trim() || !coachSessionContent.trim()} onClick={createCoachSession}>Guardar planificación</button></div>}
-          <div className="coach-session-grid">{planningLibrary.length ? planningLibrary.map((item) => <button key={item.id} className={selectedCoachSession?.id === item.id ? "selected" : ""} onClick={() => { setSelectedCoachSessionId(item.id); setAssignAthleteIds([]); }}><strong>{item.title ?? parseWorkoutSections(item.content)[0]?.heading ?? "Planificación"}</strong><small>{parseWorkoutSections(item.content).length} bloque{parseWorkoutSections(item.content).length === 1 ? "" : "s"} · creada {new Intl.DateTimeFormat("es-UY", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${item.date}T12:00:00`))}</small></button>) : <p>Todavía no creaste planificaciones.</p>}</div>
-          {selectedCoachSession && athletes.length > 0 && <div className="assign-panel">
+          <div className="coach-session-grid">{planningLibrary.length ? planningLibrary.map((item) => <button key={item.id} className={selectedCoachSummary?.id === item.id ? "selected" : ""} onClick={() => { setSelectedCoachSessionId(item.id); setSelectedCoachSession(null); setAssignAthleteIds([]); }}><strong>{item.title ?? "Planificación"}</strong><small>Creada {new Intl.DateTimeFormat("es-UY", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${item.date}T12:00:00`))}</small><span className="planning-card-preview" role="tooltip">{item.summary}</span></button>) : <p>Todavía no creaste planificaciones.</p>}</div>
+          {planningCursor && <button className="secondary compact load-more" disabled={loadingPlans} onClick={loadMorePlans}>{loadingPlans ? "Cargando…" : "Cargar más planificaciones"}</button>}
+          {selectedCoachSummary && !selectedCoachSession && <div className="planning-detail planning-loading">Cargando planificación…</div>}
+          {selectedCoachSession && <div className="planning-detail"><span className="eyebrow">Vista previa</span><h3>{selectedCoachSession.title ?? "Planificación"}</h3><WorkoutContent content={selectedCoachSession.content} /></div>}
+          {selectedCoachSummary && selectedCoachSession && athletes.length > 0 && <div className="assign-panel">
             <label className="assignment-date">Día de asignación<input type="date" value={assignmentDate} onChange={(event) => setAssignmentDate(event.target.value)} required /></label>
             <div className="assign-heading"><strong>Atletas</strong><button type="button" className="text-button" onClick={() => setAssignAthleteIds(assignAthleteIds.length === athletes.length ? [] : athletes.map((athlete) => athlete.id))}>{assignAthleteIds.length === athletes.length ? "Limpiar" : "Seleccionar todos"}</button></div>
             <div className="assign-list">{athletes.map((athlete) => <label key={athlete.id}><input type="checkbox" checked={assignAthleteIds.includes(athlete.id)} onChange={() => toggleAssignment(athlete.id)} />{athlete.name}</label>)}</div>
@@ -329,6 +393,11 @@ function parseWorkoutSections(content: string) {
 
   if (current) sections.push({ heading: current.heading, body: current.lines.join("\n").trim() });
   return sections;
+}
+
+function planningSummary(content: string) {
+  const summary = content.replace(/^==\s*/gm, "").replace(/\s+/g, " ").trim();
+  return summary.length > 180 ? `${summary.slice(0, 177)}…` : summary;
 }
 
 function WorkoutContent({ content }: { content: string }) {

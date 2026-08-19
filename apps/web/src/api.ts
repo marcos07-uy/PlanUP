@@ -1,4 +1,4 @@
-import type { Athlete, Coach, CoachInvitation, CoachSession, TrainingSession, UserProfile } from "./types";
+import type { Athlete, Coach, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, TrainingSession, UserProfile } from "./types";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -30,10 +30,13 @@ export const api = {
   coachInvitations: (token: string) => request<CoachInvitation[]>("/coach-invitations", token),
   answerCoachInvitation: (token: string, coachId: string, action: "accept" | "reject") =>
     request<Coach | void>(`/coach-invitations/${coachId}/${action}`, token, { method: "POST" }),
-  coachSessions: (token: string) => request<CoachSession[]>("/coach-sessions", token),
+  coachSessions: (token: string, cursor?: string) =>
+    request<CoachSessionPage>(`/coach-sessions?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, token),
+  coachSession: (token: string, session: CoachSessionSummary) =>
+    request<CoachSession>(`/coach-sessions/${session.date}/${session.id}`, token),
   createCoachSession: (token: string, date: string, title: string, content: string) =>
     request<CoachSession>("/coach-sessions", token, { method: "POST", body: JSON.stringify({ date, title, content }) }),
-  assignCoachSession: (token: string, session: CoachSession, date: string, athleteIds: string[]) =>
+  assignCoachSession: (token: string, session: CoachSessionSummary, date: string, athleteIds: string[]) =>
     request<{ assigned: number }>(`/coach-sessions/${session.date}/${session.id}/assign`, token, {
       method: "POST",
       body: JSON.stringify({ date, athleteIds }),

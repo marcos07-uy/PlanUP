@@ -52,6 +52,12 @@ variable "mail_from_domain" {
   default     = "mail.planup.marcos-lucas.uy"
 }
 
+variable "cognito_use_ses_email" {
+  description = "Use PlanUp's SES sender for Cognito. Keep false until SES production access is approved."
+  type        = bool
+  default     = false
+}
+
 variable "github_oidc_subject" {
   description = "Exact customized GitHub OIDC subject allowed to assume the deployment role."
   type        = string

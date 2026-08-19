@@ -32,10 +32,19 @@ export interface TrainingSession {
   updatedAt: string;
 }
 
-export interface CoachSession {
+export interface CoachSessionSummary {
   id: string;
   title?: string;
   date: string;
-  content: string;
+  summary: string;
   updatedAt: string;
+}
+
+export interface CoachSession extends CoachSessionSummary {
+  content: string;
+}
+
+export interface CoachSessionPage {
+  items: CoachSessionSummary[];
+  nextCursor?: string;
 }
