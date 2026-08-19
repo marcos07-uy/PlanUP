@@ -43,6 +43,17 @@ const prettyDate = (value: string) => {
   return formatted.charAt(0).toUpperCase() + formatted.slice(1);
 };
 
+function cognitoErrorCode(cause: unknown) {
+  if (!cause || typeof cause !== "object") return "";
+  const error = cause as { code?: unknown; name?: unknown };
+  return typeof error.code === "string" ? error.code : typeof error.name === "string" ? error.name : "";
+}
+
+function errorMessage(cause: unknown) {
+  if (cause && typeof cause === "object" && "message" in cause && typeof cause.message === "string") return cause.message;
+  return "No pudimos completar la operación";
+}
+
 function App() {
   const [token, setToken] = useState<string | null>(demoMode ? "demo" : null);
   const [profile, setProfile] = useState<UserProfile | null>(demoMode ? demoUserProfile : null);
@@ -127,12 +138,14 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
         onAuthenticated(nextToken, await api.me(nextToken));
       }
     } catch (cause) {
-      if (mode === "login" && cause instanceof Error && cause.name === "UserNotConfirmedException") {
+      const unconfirmed = cognitoErrorCode(cause) === "UserNotConfirmedException"
+        || errorMessage(cause).toLowerCase().includes("not confirmed");
+      if (mode === "login" && unconfirmed) {
         setMode("confirm");
         setPassword("");
         setNotice("Tu cuenta todavía no está confirmada. Podés solicitar un código nuevo.");
       } else {
-        setError(cause instanceof Error ? cause.message : "No pudimos completar la operación");
+        setError(errorMessage(cause));
       }
     }
     finally { setBusy(false); }
@@ -146,7 +159,7 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
       setNotice("Enviamos un nuevo código de verificación. Revisá también spam y promociones.");
       setResendCooldown(60);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No pudimos reenviar el código");
+      setError(errorMessage(cause));
     } finally {
       setResending(false);
     }
@@ -174,7 +187,7 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
       <span className="eyebrow">{eyebrow}</span>
       <h2>{title}</h2>
       {mode === "signup" && <><label>Nombre<input value={name} onChange={(e) => setName(e.target.value)} required /></label><div className="role-picker"><button type="button" className={role === "coach" ? "active" : ""} onClick={() => setRole("coach")}>Entrenador</button><button type="button" className={role === "athlete" ? "active" : ""} onClick={() => setRole("athlete")}>Atleta</button></div></>}
-      {mode !== "confirm" && mode !== "reset" && <label>Email<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>}
+      {mode !== "reset" && <label>Email<input type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></label>}
       {(mode === "confirm" || mode === "reset") && <label>Código de verificación<input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} required /></label>}
       {isPasswordMode && <label>{mode === "reset" ? "Nueva contraseña" : "Contraseña"}<input type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} minLength={8} required /></label>}
       {(mode === "signup" || mode === "reset") && <p className="field-hint">Mínimo 8 caracteres, con mayúscula, minúscula y número.</p>}
@@ -185,6 +198,7 @@ function Auth({ onAuthenticated }: { onAuthenticated(token: string, profile: Use
         {resending ? "Reenviando…" : resendCooldown > 0 ? `Reenviar código en ${resendCooldown}s` : "Reenviar código"}
       </button>}
       {mode === "login" && <button type="button" className="text-button" onClick={() => changeMode("forgot")}>Olvidé mi contraseña</button>}
+      {mode === "login" && <button type="button" className="text-button" onClick={() => changeMode("confirm")}>Ya tengo un código de confirmación</button>}
       {(mode === "login" || mode === "signup") && <button type="button" className="text-button" onClick={() => changeMode(mode === "login" ? "signup" : "login")}>{mode === "login" ? "No tengo cuenta" : "Ya tengo cuenta"}</button>}
       {(mode === "confirm" || mode === "forgot" || mode === "reset") && <button type="button" className="text-button" onClick={() => changeMode("login")}>Volver al inicio de sesión</button>}
     </form>
