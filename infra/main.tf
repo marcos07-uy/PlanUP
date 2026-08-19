@@ -22,10 +22,21 @@ module "data" {
   name = local.name
 }
 
+module "email" {
+  source = "./modules/email"
+
+  aws_region       = var.aws_region
+  hosted_zone_name = var.hosted_zone_name
+  email_domain     = var.email_domain
+  mail_from_domain = var.mail_from_domain
+}
+
 module "auth" {
   source = "./modules/auth"
 
-  name = local.name
+  name               = local.name
+  email_identity_arn = module.email.identity_arn
+  from_email_address = "PlanUp <${var.email_from_address}>"
 }
 
 module "api" {

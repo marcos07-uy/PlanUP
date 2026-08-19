@@ -36,6 +36,16 @@ output "github_actions_role_arn" {
   value       = module.cicd.role_arn
 }
 
+output "email_domain" {
+  description = "SES domain identity used by Cognito."
+  value       = module.email.email_domain
+}
+
+output "mail_from_domain" {
+  description = "Custom SES MAIL FROM domain."
+  value       = module.email.mail_from_domain
+}
+
 output "frontend_env" {
   description = "Values to place in apps/web/.env.production before building the frontend."
   value       = <<-EOT

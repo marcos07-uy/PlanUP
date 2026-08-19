@@ -42,6 +42,18 @@ resource "aws_iam_role_policy_attachment" "power_user" {
 
 data "aws_iam_policy_document" "terraform_iam" {
   statement {
+    sid       = "CreateCognitoEmailServiceRole"
+    actions   = ["iam:CreateServiceLinkedRole"]
+    resources = ["arn:aws:iam::*:role/aws-service-role/email.cognito-idp.amazonaws.com/AWSServiceRoleForAmazonCognitoIdpEmailService"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:AWSServiceName"
+      values   = ["email.cognito-idp.amazonaws.com"]
+    }
+  }
+
+  statement {
     sid       = "ListOIDCProviders"
     actions   = ["iam:ListOpenIDConnectProviders"]
     resources = ["*"]

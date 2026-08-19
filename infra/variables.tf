@@ -34,6 +34,24 @@ variable "frontend_domain_name" {
   default     = "planup.marcos-lucas.uy"
 }
 
+variable "email_domain" {
+  description = "Domain verified in SES for PlanUp transactional email."
+  type        = string
+  default     = "planup.marcos-lucas.uy"
+}
+
+variable "email_from_address" {
+  description = "Sender address used by Cognito within the verified SES domain."
+  type        = string
+  default     = "no-reply@planup.marcos-lucas.uy"
+}
+
+variable "mail_from_domain" {
+  description = "Custom SES MAIL FROM subdomain used for SPF alignment."
+  type        = string
+  default     = "mail.planup.marcos-lucas.uy"
+}
+
 variable "github_oidc_subject" {
   description = "Exact customized GitHub OIDC subject allowed to assume the deployment role."
   type        = string
