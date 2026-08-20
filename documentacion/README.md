@@ -9,6 +9,7 @@ Esta carpeta concentra el contexto técnico y funcional necesario para continuar
 3. [Funcionamiento](funcionamiento.md): experiencia de entrenador y atleta, API y autorización.
 4. [Modelo de datos](modelo-de-datos.md): estructura de la tabla DynamoDB y patrones de acceso.
 5. [Desarrollo y despliegue](desarrollo-y-despliegue.md): ejecución local, validaciones y publicación en AWS.
+6. [TODO Android y Google Play](todo-android-play-store.md): trabajo diferido para empaquetar la PWA y publicarla cuando cierre el desarrollo inicial.
 
 ## Resumen del producto
 
@@ -22,4 +23,3 @@ El MVP evita deliberadamente pagos, chat, videos, estadísticas, leaderboards, g
 - Rama principal: `main`
 - Autor local configurado: `marcos07-uy <marcos07-uy@users.noreply.github.com>`
 - Directorio local: `/home/marcos/repos/PlanUP`
-
