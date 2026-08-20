@@ -80,6 +80,8 @@ El atleta puede marcar la sesión como iniciada, completada u omitida desde una 
 
 El entrenador abre inicialmente una vista semanal que reúne las sesiones de todos sus atletas. La vista distingue completadas, en curso, pendientes, vencidas y omitidas, y muestra RPE cuando existe. La API consulta un índice mensual por entrenador: una semana usa una consulta DynamoDB, o dos cuando cruza de mes, sin hacer una petición independiente por atleta. Las sesiones anteriores a esta funcionalidad siguen disponibles para el atleta, pero no aparecen en cumplimiento hasta ser reasignadas.
 
+En **Grupos**, el entrenador crea conjuntos reutilizables y selecciona sus miembros. Un atleta puede pertenecer a varios grupos. Al asignar una planificación puede combinar grupos y atletas individuales; la API elimina duplicados y materializa una sola sesión por atleta. Los cambios futuros del grupo no modifican sesiones ya asignadas.
+
 El contenido reconoce encabezados `CALENTAMIENTO`, `FUERZA` y `WOD` para presentarlos como bloques visuales. La base de datos conserva el texto completo, por lo que no depende de esa estructura.
 
 ## Endpoints
@@ -104,6 +106,9 @@ Todos requieren un JWT de Cognito.
 | `GET` | `/athletes/{id}/sessions?coachId=&from=&to=` | Ambos | Lista sesiones del coach indicado en un rango. |
 | `PUT` | `/me/sessions/{coachId}/{date}/execution` | Atleta | Actualiza estado, resultados, RPE y comentario con versión e idempotencia. |
 | `GET` | `/coach/calendar?from=&to=&cursor=` | Entrenador | Devuelve cumplimiento del equipo en un rango máximo de 31 días usando `GSI2`. |
+| `GET/POST` | `/groups` | Entrenador | Lista o crea grupos. |
+| `GET/DELETE` | `/groups/{groupId}` | Entrenador | Obtiene el grupo con sus miembros o lo elimina. |
+| `PUT/DELETE` | `/groups/{groupId}/athletes/{athleteId}` | Entrenador | Agrega o elimina una membresía bidireccional. |
 
 ## Autorización
 

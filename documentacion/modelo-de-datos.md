@@ -131,6 +131,12 @@ El estado puede ser `pending`, `in_progress`, `completed` o `skipped`. Una sesi�
 
 La fecha identifica cuándo se creó la planificación y forma parte de su clave. No limita su reutilización: al asignarla, la API recibe una fecha de destino independiente. `version` protege ediciones concurrentes y `normalizedTitle` facilita comparaciones de búsqueda. Editar la planificación no modifica las sesiones que ya fueron asignadas. Una sesión pendiente existente sólo se reemplaza después de confirmación; una sesión iniciada, completada u omitida nunca se sobrescribe. El resumen, limitado a 180 caracteres, alimenta las tarjetas sin enviar el contenido completo.
 
+### Grupos y membresías
+
+Un grupo se guarda como `PK = COACH#coach`, `SK = GROUP#group`. Cada miembro genera dos ítems transaccionales: `PK = GROUP#coach#group, SK = ATHLETE#athlete` y la relación inversa `PK = ATHLETE#athlete, SK = GROUP#coach#group`. Así un atleta puede pertenecer a varios grupos sin listas crecientes ni `Scan`.
+
+Al asignar, la API consulta los miembros de cada grupo, los une con los atletas seleccionados individualmente y elimina IDs repetidos. Se crean sesiones concretas: modificar la membresía posteriormente no altera asignaciones anteriores.
+
 ## Patrones de acceso
 
 | Necesidad | Operación DynamoDB |
@@ -147,6 +153,8 @@ La fecha identifica cuándo se creó la planificación y forma parte de su clave
 | Listar sesiones por coach y fechas | `Query PK = ATHLETE#athlete`, `SK BETWEEN SESSION#coach#from AND SESSION#coach#to`. |
 | Actualizar ejecución | `UpdateItem(ATHLETE#athlete, SESSION#coach#date)` condicionado por `executionVersion`. |
 | Ver cumplimiento del coach | Una `Query` por mes en `GSI2`, usando `GSI2PK = COACH#coach#YYYY-MM` y un rango de fechas en `GSI2SK`. |
+| Listar grupos | `Query PK = COACH#coach`, rango `GROUP#` a `GROUP#~`. |
+| Listar miembros | `Query PK = GROUP#coach#group`, `begins_with(SK, ATHLETE#)`. |
 
 No se utiliza `Scan`. Esto mantiene bajo el consumo de lecturas aunque crezca la tabla.
 

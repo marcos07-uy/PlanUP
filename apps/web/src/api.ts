@@ -1,4 +1,4 @@
-import type { Athlete, Coach, CoachCalendarPage, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, SessionResult, TrainingSession, UserProfile } from "./types";
+import type { Athlete, AthleteGroup, AthleteGroupSummary, Coach, CoachCalendarPage, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, SessionResult, TrainingSession, UserProfile } from "./types";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -40,10 +40,10 @@ export const api = {
     request<CoachSession>(`/coach-sessions/${session.date}/${session.id}`, token, { method: "PUT", body: JSON.stringify({ title, content, expectedVersion: session.version }) }),
   duplicateCoachSession: (token: string, session: CoachSession, operationId: string, date: string) =>
     request<CoachSession>(`/coach-sessions/${session.date}/${session.id}/duplicate`, token, { method: "POST", body: JSON.stringify({ operationId, date }) }),
-  assignCoachSession: (token: string, session: CoachSessionSummary, date: string, athleteIds: string[], replacePending = false) =>
+  assignCoachSession: (token: string, session: CoachSessionSummary, date: string, athleteIds: string[], groupIds: string[] = [], replacePending = false) =>
     request<{ assigned: number; skipped: number; conflicts: { athleteId: string; reason: string }[] }>(`/coach-sessions/${session.date}/${session.id}/assign`, token, {
       method: "POST",
-      body: JSON.stringify({ date, athleteIds, replacePending }),
+      body: JSON.stringify({ date, athleteIds, groupIds, replacePending }),
     }),
   sessions: (token: string, athleteId: string, coachId: string, from: string, to: string) =>
     request<TrainingSession[]>(`/athletes/${athleteId}/sessions?coachId=${encodeURIComponent(coachId)}&from=${from}&to=${to}`, token),
@@ -54,4 +54,10 @@ export const api = {
     }),
   coachCalendar: (token: string, from: string, to: string, cursor?: string) =>
     request<CoachCalendarPage>(`/coach/calendar?from=${from}&to=${to}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, token),
+  groups: (token: string) => request<AthleteGroupSummary[]>("/groups", token),
+  group: (token: string, groupId: string) => request<AthleteGroup>(`/groups/${groupId}`, token),
+  createGroup: (token: string, name: string) => request<AthleteGroup>("/groups", token, { method: "POST", body: JSON.stringify({ name }) }),
+  addGroupAthlete: (token: string, groupId: string, athleteId: string) => request<Athlete>(`/groups/${groupId}/athletes/${athleteId}`, token, { method: "PUT" }),
+  removeGroupAthlete: (token: string, groupId: string, athleteId: string) => request<void>(`/groups/${groupId}/athletes/${athleteId}`, token, { method: "DELETE" }),
+  deleteGroup: (token: string, groupId: string) => request<void>(`/groups/${groupId}`, token, { method: "DELETE" }),
 };

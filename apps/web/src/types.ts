@@ -24,6 +24,17 @@ export interface CoachInvitation {
   createdAt: string;
 }
 
+export interface AthleteGroupSummary {
+  id: string;
+  name: string;
+  version: number;
+  updatedAt: string;
+}
+
+export interface AthleteGroup extends AthleteGroupSummary {
+  athletes: Athlete[];
+}
+
 export interface TrainingSession {
   athleteId: string;
   coachId: string;
