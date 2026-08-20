@@ -65,6 +65,8 @@ header { height: 86px; display: flex; align-items: center; justify-content: spac
 .date-strip strong { font: italic 800 34px "Barlow Condensed"; }
 .date-strip .session-state { margin-top: 5px; color: #fff; }
 .date-strip button.active .session-state { color: var(--red); }
+.date-strip .session-state.completed { color: #fff; }
+.date-strip button.active .session-state.completed { color: #5ad78d; }
 .coach-session-panel { margin-top: 18px; padding: 18px; color: #111; background: var(--paper); box-shadow: 7px 7px 0 var(--dark); }
 .coach-session-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .coach-session-title h2 { margin: 4px 0 0; font: italic 800 30px "Barlow Condensed"; text-transform: uppercase; }
@@ -106,6 +108,34 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .workout-block h3 { display: inline-block; margin: 0 0 13px; padding: 7px 30px 7px 13px; color: #fff; background: var(--dark); font: italic 800 28px "Barlow Condensed"; text-transform: uppercase; clip-path: polygon(0 0,100% 0,88% 100%,0 100%); }
 .workout-block p { margin: 0; white-space: pre-wrap; font-size: 16px; line-height: 1.45; }
 .workout-updated { padding: 11px 0; color: #690006; font-size: 11px; text-align: right; text-transform: uppercase; }
+.execution-card { margin-top: 20px; border: 4px solid var(--dark); padding: 18px; color: var(--dark); background: var(--paper); box-shadow: 7px 7px 0 var(--dark); }
+.execution-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.execution-heading > div { display: grid; gap: 3px; }
+.execution-heading strong { font: italic 800 30px "Barlow Condensed"; text-transform: uppercase; }
+.execution-heading .text-button { margin: 0; padding: 6px 0; text-decoration: underline; }
+.execution-actions { display: flex; gap: 10px; margin-top: 16px; }
+.execution-actions button { flex: 1; }
+.status-completed { border-color: #163c28; box-shadow: 7px 7px 0 #163c28; }
+.status-skipped { border-color: #68645d; box-shadow: 7px 7px 0 #68645d; }
+.saved-result { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 14px; }
+.saved-result span { display: grid; gap: 3px; padding: 10px; border: 2px solid var(--dark); }
+.saved-result small { color: #666; font-size: 11px; text-transform: uppercase; }
+.saved-result strong { overflow-wrap: anywhere; }
+.saved-result p { grid-column: 1 / -1; margin: 4px 0 0; padding-top: 10px; border-top: 2px solid var(--dark); white-space: pre-wrap; }
+.result-form { display: grid; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 3px solid var(--dark); }
+.result-form label { margin: 0; }
+.result-form textarea { min-height: 90px; resize: vertical; }
+.result-intro { display: grid; gap: 3px; }
+.result-intro small { color: #666; }
+.metric-row { display: grid; grid-template-columns: 130px minmax(130px, 1fr) minmax(130px, 1fr) 38px; gap: 7px; align-items: stretch; }
+.metric-row input, .metric-row select { min-width: 0; padding: 10px; }
+.metric-value { display: flex; align-items: center; border: 2px solid #b7b4ac; background: #fff; }
+.metric-value:focus-within { border-color: var(--red); box-shadow: 4px 4px 0 var(--dark); }
+.metric-value input, .metric-value select { border: 0; box-shadow: none; }
+.metric-value select { width: 72px; padding-left: 4px; }
+.metric-value span { padding-right: 10px; color: #555; font-size: 12px; }
+.remove-metric { display: grid; place-items: center; border: 0; color: #fff; background: var(--dark); }
+.add-metric { justify-self: start; padding: 10px 13px; }
 .empty { display: grid; place-items: center; padding: 70px 24px; border: 4px solid var(--dark); text-align: center; }
 .empty h3 { margin: 10px 0 5px; font: italic 800 30px "Barlow Condensed"; text-transform: uppercase; }
 .empty p { margin: 0 0 18px; }
@@ -153,6 +183,13 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .workout-block h3 { margin-bottom: 4px; padding: 4px 22px 4px 9px; font-size: 20px; }
   .workout-block p { font-size: 12.5px; line-height: 1.3; }
   .workout-updated { padding: 6px 0; font-size: 9px; }
+  .execution-card { margin-top: 14px; padding: 14px; box-shadow: 5px 5px 0 var(--dark); }
+  .execution-heading strong { font-size: 26px; }
+  .execution-actions { flex-direction: column; }
+  .metric-row { grid-template-columns: 1fr 38px; padding-bottom: 10px; border-bottom: 2px solid #cbc7bd; }
+  .metric-row > select, .metric-row > input, .metric-row > .metric-value { grid-column: 1; }
+  .metric-row .remove-metric { grid-column: 2; grid-row: 1 / span 3; }
+  .saved-result { grid-template-columns: 1fr 1fr; }
   .edit-session { margin-top: 3px; padding: 11px; font-size: 23px; }
 }
 
