@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "test": "node ../../scripts/verify-password-reset.mjs && node ../../scripts/verify-registration-confirmation.mjs && node ../../scripts/verify-planning-library.mjs && node ../../scripts/verify-athlete-coaches.mjs",
+    "test": "node ../../scripts/verify-password-reset.mjs && node ../../scripts/verify-registration-confirmation.mjs && node ../../scripts/verify-planning-library.mjs && node ../../scripts/verify-athlete-coaches.mjs && node ../../scripts/verify-session-execution.mjs",
     "typecheck": "tsc -b --pretty false",
     "preview": "vite preview"
   },
