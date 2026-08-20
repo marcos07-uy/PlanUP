@@ -73,6 +73,17 @@ header { height: 86px; display: flex; align-items: center; justify-content: spac
 .compliance-row > span { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; }
 .compliance-row b { padding: 5px 7px; color: #fff; background: var(--dark); font-size: 11px; }
 .calendar-message { padding: 38px 10px; text-align: center; }
+.group-panel { margin-top: 18px; padding: 18px; color: var(--dark); background: var(--paper); box-shadow: 7px 7px 0 var(--dark); }
+.group-create { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.group-layout { display: grid; grid-template-columns: 220px 1fr; gap: 12px; margin-top: 14px; }
+.group-list { display: grid; align-content: start; gap: 5px; }
+.group-list button { border: 2px solid var(--dark); padding: 12px; background: transparent; text-align: left; }
+.group-list button.selected { color: #fff; background: var(--dark); }
+.group-detail { padding: 14px; border: 3px solid var(--dark); background: #fff; }
+.group-detail > div:first-child { display: flex; align-items: center; justify-content: space-between; }
+.group-detail h3 { margin: 0; font: italic 800 27px "Barlow Condensed"; text-transform: uppercase; }
+.group-detail > div:first-child button { display: grid; place-items: center; width: 36px; height: 36px; border: 0; color: #fff; background: #a00009; }
+.group-detail > p { color: #666; font-size: 12px; }
 .athlete-selector > span { display: block; margin-bottom: 7px; font: 700 19px "Barlow Condensed"; letter-spacing: .07em; text-transform: uppercase; }
 .athlete-selector button { display: flex; align-items: center; justify-content: space-between; width: 100%; border: 4px solid var(--dark); padding: 16px 22px; color: #fff; background: var(--dark); font: italic 800 clamp(28px, 4vw, 44px) "Barlow Condensed"; text-align: left; text-transform: uppercase; }
 .coach-selector select { width: 100%; border: 4px solid var(--dark); padding: 16px 22px; color: #fff; background: var(--dark); font: italic 800 clamp(28px, 4vw, 44px) "Barlow Condensed"; text-transform: uppercase; }
@@ -198,6 +209,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .compliance-row { grid-template-columns: 82px 1fr auto; gap: 7px; padding: 9px; }
   .compliance-row > span { grid-column: 2; }
   .compliance-row b { grid-column: 3; grid-row: 1 / span 2; }
+  .group-panel { margin-top: 12px; padding: 14px; box-shadow: 5px 5px 0 var(--dark); }
+  .group-layout { grid-template-columns: 1fr; }
   .athlete-selector > span { margin-bottom: 4px; font-size: 15px; }
   .athlete-selector button { padding: 11px 14px; font-size: 27px; }
   .coach-selector select { padding: 11px 14px; font-size: 27px; }

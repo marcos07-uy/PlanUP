@@ -50,7 +50,7 @@ try {
 
   await page.getByLabel("Día de asignación").fill("2026-08-27");
   await page.getByRole("button", { name: "Seleccionar todos" }).click();
-  await page.getByRole("button", { name: "Asignar a 2 atletas" }).click();
+  await page.getByRole("button", { name: "Asignar planificación" }).click();
 
   await page.getByText("Sesión asignada a 2 atletas").waitFor();
   if (await page.getByRole("button", { name: "Agregar sesión" }).count()) throw new Error("Legacy daily session editor is visible to the coach");

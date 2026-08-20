@@ -19,6 +19,12 @@ locals {
     "POST /coach-sessions/{date}/{sessionId}/assign",
     "PUT /me/sessions/{coachId}/{date}/execution",
     "GET /coach/calendar",
+    "GET /groups",
+    "POST /groups",
+    "GET /groups/{groupId}",
+    "DELETE /groups/{groupId}",
+    "PUT /groups/{groupId}/athletes/{athleteId}",
+    "DELETE /groups/{groupId}/athletes/{athleteId}",
     "GET /athletes/{athleteId}/sessions",
   ])
 }

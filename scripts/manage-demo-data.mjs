@@ -120,6 +120,13 @@ function buildItems(seededGroups) {
       items.push({ PK: `COACH#${coach.id}`, SK: `ATHLETE#${athlete.id}`, entityType: "COACH_ATHLETE", coachId: coach.id, athleteId: athlete.id, name: athlete.name, email: athlete.email, createdAt: now, seedId: SEED_ID });
       items.push({ PK: `ATHLETE#${athlete.id}`, SK: `COACH#${coach.id}`, entityType: "ATHLETE_COACH", coachId: coach.id, athleteId: athlete.id, name: coach.name, email: coach.email, createdAt: now, seedId: SEED_ID });
     }
+    [[`${group.key}-primary`, `${group.key === "crossfit" ? "CrossFit avanzados" : "Fuerza"}`, athletes.slice(0, 2)], [`${group.key}-morning`, "Turno mañana", athletes.slice(1)]].forEach(([groupId, groupName, members]) => {
+      items.push({ PK: `COACH#${coach.id}`, SK: `GROUP#${groupId}`, entityType: "GROUP", id: groupId, coachId: coach.id, name: groupName, version: 1, createdAt: now, updatedAt: now, seedId: SEED_ID });
+      members.forEach((athlete) => {
+        items.push({ PK: `GROUP#${coach.id}#${groupId}`, SK: `ATHLETE#${athlete.id}`, entityType: "GROUP_MEMBERSHIP", groupId, coachId: coach.id, athleteId: athlete.id, name: athlete.name, email: athlete.email, createdAt: now, seedId: SEED_ID });
+        items.push({ PK: `ATHLETE#${athlete.id}`, SK: `GROUP#${coach.id}#${groupId}`, entityType: "ATHLETE_GROUP", groupId, coachId: coach.id, athleteId: athlete.id, groupName, createdAt: now, seedId: SEED_ID });
+      });
+    });
     group.plans.forEach(([title, content], index) => {
       const date = isoDay(-index);
       const id = `demo-${group.key}-${String(index + 1).padStart(2, "0")}`;
@@ -136,7 +143,7 @@ function buildItems(seededGroups) {
 
 if (dryRun) {
   const users = groups.flatMap(usersFor);
-  console.log(JSON.stringify({ region: REGION, userPoolId: USER_POOL_ID, tableName: TABLE_NAME, users: users.length, coaches: 2, athletes: 8, relations: 16, plans: 24, assignedSessions: 56, coachEmails: groups.map((group) => group.coach.email) }, null, 2));
+  console.log(JSON.stringify({ region: REGION, userPoolId: USER_POOL_ID, tableName: TABLE_NAME, users: users.length, coaches: 2, athletes: 8, relations: 16, athleteGroups: 4, plans: 24, assignedSessions: 56, coachEmails: groups.map((group) => group.coach.email) }, null, 2));
   process.exit(0);
 }
 

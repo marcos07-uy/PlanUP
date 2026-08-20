@@ -207,6 +207,12 @@ function assertTitle(value: string | undefined) {
   return title;
 }
 
+function assertGroupName(value: string | undefined) {
+  const name = value?.trim();
+  if (!name || name.length > 80) throw Object.assign(new Error("Group name must contain between 1 and 80 characters"), { statusCode: 400 });
+  return name;
+}
+
 function planningSummary(content: string) {
   const summary = content.replace(/^==\s*/gm, "").replace(/\s+/g, " ").trim();
   return summary.length > 180 ? `${summary.slice(0, 177)}…` : summary;
@@ -305,6 +311,64 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         },
       }))));
       return response(200, (result.Items ?? []).map((item) => ({ id: item.athleteId, name: item.name, email: item.email })));
+    }
+
+    if (path === "/groups" && method === "GET") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can manage groups" });
+      const result = await database.send(new QueryCommand({ TableName: tableName, KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to", ExpressionAttributeValues: { ":pk": `COACH#${identity.id}`, ":from": "GROUP#", ":to": "GROUP#~" } }));
+      return response(200, (result.Items ?? []).map((item) => ({ id: item.id, name: item.name, version: item.version ?? 0, updatedAt: item.updatedAt })));
+    }
+
+    if (path === "/groups" && method === "POST") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can manage groups" });
+      const name = assertGroupName((JSON.parse(event.body ?? "{}") as { name?: string }).name);
+      const id = randomUUID();
+      const now = new Date().toISOString();
+      const item = { PK: `COACH#${identity.id}`, SK: `GROUP#${id}`, entityType: "GROUP", id, coachId: identity.id, name, version: 1, createdAt: now, updatedAt: now };
+      await database.send(new PutCommand({ TableName: tableName, Item: item, ConditionExpression: "attribute_not_exists(PK)" }));
+      return response(201, { id, name, version: 1, updatedAt: now, athletes: [] });
+    }
+
+    const groupMemberMatch = path.match(/^\/groups\/([^/]+)\/athletes\/([^/]+)$/);
+    if (groupMemberMatch && (method === "PUT" || method === "DELETE")) {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can manage groups" });
+      const groupId = decodeURIComponent(groupMemberMatch[1]);
+      const athleteId = decodeURIComponent(groupMemberMatch[2]);
+      const group = await database.send(new GetCommand({ TableName: tableName, Key: { PK: `COACH#${identity.id}`, SK: `GROUP#${groupId}` } }));
+      if (!group.Item) return response(404, { message: "Group not found" });
+      await assertCoachAccess(database, identity, athleteId);
+      const directKey = { PK: `GROUP#${identity.id}#${groupId}`, SK: `ATHLETE#${athleteId}` };
+      const reverseKey = { PK: `ATHLETE#${athleteId}`, SK: `GROUP#${identity.id}#${groupId}` };
+      if (method === "DELETE") {
+        await database.send(new TransactWriteCommand({ TransactItems: [{ Delete: { TableName: tableName, Key: directKey } }, { Delete: { TableName: tableName, Key: reverseKey } }] }));
+        return { statusCode: 204 };
+      }
+      const relation = await database.send(new GetCommand({ TableName: tableName, Key: { PK: `COACH#${identity.id}`, SK: `ATHLETE#${athleteId}` } }));
+      const now = new Date().toISOString();
+      await database.send(new TransactWriteCommand({ TransactItems: [
+        { Put: { TableName: tableName, Item: { ...directKey, entityType: "GROUP_MEMBERSHIP", groupId, coachId: identity.id, athleteId, name: relation.Item?.name, email: relation.Item?.email, createdAt: now } } },
+        { Put: { TableName: tableName, Item: { ...reverseKey, entityType: "ATHLETE_GROUP", groupId, coachId: identity.id, athleteId, groupName: group.Item.name, createdAt: now } } },
+      ] }));
+      return response(200, { id: athleteId, name: relation.Item?.name, email: relation.Item?.email });
+    }
+
+    const groupMatch = path.match(/^\/groups\/([^/]+)$/);
+    if (groupMatch) {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can manage groups" });
+      const groupId = decodeURIComponent(groupMatch[1]);
+      const key = { PK: `COACH#${identity.id}`, SK: `GROUP#${groupId}` };
+      const group = await database.send(new GetCommand({ TableName: tableName, Key: key }));
+      if (!group.Item) return response(404, { message: "Group not found" });
+      if (method === "GET") {
+        const members = await database.send(new QueryCommand({ TableName: tableName, KeyConditionExpression: "PK = :pk AND begins_with(SK, :athlete)", ExpressionAttributeValues: { ":pk": `GROUP#${identity.id}#${groupId}`, ":athlete": "ATHLETE#" } }));
+        return response(200, { id: group.Item.id, name: group.Item.name, version: group.Item.version ?? 0, updatedAt: group.Item.updatedAt, athletes: (members.Items ?? []).map((item) => ({ id: item.athleteId, name: item.name, email: item.email })) });
+      }
+      if (method === "DELETE") {
+        const members = await database.send(new QueryCommand({ TableName: tableName, KeyConditionExpression: "PK = :pk AND begins_with(SK, :athlete)", ExpressionAttributeValues: { ":pk": `GROUP#${identity.id}#${groupId}`, ":athlete": "ATHLETE#" } }));
+        if ((members.Items ?? []).length > 40) return response(409, { message: "Remove athletes before deleting a group with more than 40 members" });
+        await database.send(new TransactWriteCommand({ TransactItems: [{ Delete: { TableName: tableName, Key: key } }, ...(members.Items ?? []).flatMap((item) => [{ Delete: { TableName: tableName, Key: { PK: item.PK, SK: item.SK } } }, { Delete: { TableName: tableName, Key: { PK: `ATHLETE#${item.athleteId}`, SK: `GROUP#${identity.id}#${groupId}` } } }])] }));
+        return { statusCode: 204 };
+      }
     }
 
     if (path === "/athletes" && method === "POST") {
@@ -607,11 +671,19 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       const date = decodeURIComponent(coachSessionAssignMatch[1]);
       const sessionId = decodeURIComponent(coachSessionAssignMatch[2]);
       assertDate(date);
-      const body = JSON.parse(event.body ?? "{}") as { athleteIds?: string[]; date?: string; replacePending?: boolean };
+      const body = JSON.parse(event.body ?? "{}") as { athleteIds?: string[]; groupIds?: string[]; date?: string; replacePending?: boolean };
       const assignmentDate = body.date ?? date;
       assertDate(assignmentDate);
-      const athleteIds = [...new Set(body.athleteIds ?? [])].filter(Boolean);
+      const groupIds = [...new Set(body.groupIds ?? [])].filter(Boolean);
+      const groupedAthleteIds = await Promise.all(groupIds.map(async (groupId) => {
+        const group = await database.send(new GetCommand({ TableName: tableName, Key: { PK: `COACH#${identity.id}`, SK: `GROUP#${groupId}` } }));
+        if (!group.Item) throw Object.assign(new Error("Group not found"), { statusCode: 404 });
+        const members = await database.send(new QueryCommand({ TableName: tableName, KeyConditionExpression: "PK = :pk AND begins_with(SK, :athlete)", ExpressionAttributeValues: { ":pk": `GROUP#${identity.id}#${groupId}`, ":athlete": "ATHLETE#" } }));
+        return (members.Items ?? []).map((item) => String(item.athleteId));
+      }));
+      const athleteIds = [...new Set([...(body.athleteIds ?? []), ...groupedAthleteIds.flat()])].filter(Boolean);
       if (!athleteIds.length) return response(400, { message: "At least one athlete is required" });
+      if (athleteIds.length > 50) return response(400, { message: "An assignment can contain up to 50 athletes" });
 
       const coachSession = await database.send(new GetCommand({
         TableName: tableName,

@@ -239,6 +239,29 @@ describe("PlanUp API handler", () => {
     assert.equal(result.json.message, "Only coaches have an athlete list");
   });
 
+  it("manages multi-group memberships and assigns the de-duplicated athlete union", async () => {
+    db.seed(
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1", name: "One", email: "one@example.com" },
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-2", entityType: "COACH_ATHLETE", athleteId: "athlete-2", name: "Two", email: "two@example.com" },
+      { PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-20#base-1", entityType: "COACH_SESSION", id: "base-1", coachId: "coach-1", title: "Group plan", date: "2026-08-20", content: "Train" },
+    );
+    const firstGroup = await invoke(db, event("POST", "/groups", coach, { body: { name: "Advanced" } }));
+    const secondGroup = await invoke(db, event("POST", "/groups", coach, { body: { name: "Morning" } }));
+    await invoke(db, event("PUT", `/groups/${firstGroup.json.id}/athletes/athlete-1`, coach));
+    await invoke(db, event("PUT", `/groups/${secondGroup.json.id}/athletes/athlete-1`, coach));
+    await invoke(db, event("PUT", `/groups/${secondGroup.json.id}/athletes/athlete-2`, coach));
+
+    assert(db.get("ATHLETE#athlete-1", `GROUP#coach-1#${firstGroup.json.id}`));
+    assert(db.get("ATHLETE#athlete-1", `GROUP#coach-1#${secondGroup.json.id}`));
+    const detail = await invoke(db, event("GET", `/groups/${secondGroup.json.id}`, coach));
+    assert.equal(detail.json.athletes.length, 2);
+
+    const assigned = await invoke(db, event("POST", "/coach-sessions/2026-08-20/base-1/assign", coach, { body: { date: "2026-08-27", athleteIds: ["athlete-1"], groupIds: [firstGroup.json.id, secondGroup.json.id] } }));
+    assert.equal(assigned.json.assigned, 2);
+    assert(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-27"));
+    assert(db.get("ATHLETE#athlete-2", "SESSION#coach-1#2026-08-27"));
+  });
+
   it("creates and lists the complete coach planning library", async () => {
     const createResult = await invoke(db, event("POST", "/coach-sessions", coach, {
       body: { date: "2026-08-18", title: "Fuerza y AMRAP", content: "==warmup\nMove\n\n==wod\nTrain" },
