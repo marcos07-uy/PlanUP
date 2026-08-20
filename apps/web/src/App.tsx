@@ -253,6 +253,7 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   const [calendarSessions, setCalendarSessions] = useState<TrainingSession[]>([]);
   const [compliance, setCompliance] = useState<ComplianceSummary>(emptyCompliance);
   const [calendarLoading, setCalendarLoading] = useState(false);
+  const [duplicatingWeek, setDuplicatingWeek] = useState(false);
   const [planningSearch, setPlanningSearch] = useState("");
   const [appliedPlanningSearch, setAppliedPlanningSearch] = useState("");
   const [editingPlanning, setEditingPlanning] = useState(false);
@@ -496,6 +497,25 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
 
   const visibleSessions = sessions.filter((item) => item.athleteId === selected?.id).sort((a, b) => a.date.localeCompare(b.date));
 
+  async function duplicateWeek(sourceFrom: string, targetFrom: string) {
+    setDuplicatingWeek(true);
+    try {
+      if (demoMode) {
+        setNotice("Semana duplicada en modo demostración");
+      } else {
+        const result = await api.duplicateWeek(token, sourceFrom, targetFrom, crypto.randomUUID());
+        const total = result.created + result.unchanged;
+        setNotice(`${total} sesión${total === 1 ? "" : "es"} copiada${total === 1 ? "" : "s"}${result.skipped ? `; ${result.skipped} sin sobrescribir` : ""}`);
+        setWeekOffset(Math.round((Date.parse(`${targetFrom}T12:00:00Z`) - Date.parse(`${weekRange(0)[0]}T12:00:00Z`)) / (7 * 86_400_000)));
+      }
+      setTimeout(() => setNotice(""), 3000);
+    } catch (cause) {
+      setNotice(errorMessage(cause));
+    } finally {
+      setDuplicatingWeek(false);
+    }
+  }
+
   return <div className="app-shell">
     <header>{profile.role === "coach" ? <button className="mobile-menu" onClick={() => setMobileTeamOpen((open) => !open)} aria-label="Mostrar atletas"><List size={25} weight="bold" /></button> : <span />}<Brand /><div className="user-menu"><span>{profile.name}</span><button onClick={onLogout} aria-label="Salir"><SignOut size={22} weight="bold" /><span className="logout-label">Salir</span></button></div></header>
     <main className={`dashboard ${profile.role}`}>
@@ -506,7 +526,7 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
         {profile.role === "athlete" && <div className="athlete-selector coach-selector"><span>Coach</span><select aria-label="Coach seleccionado" value={selectedCoachId} onChange={(event) => setSelectedCoachId(event.target.value)} disabled={!coaches.length}><option value="">{coaches.length ? "Seleccioná un coach" : "Todavía no tenés coaches"}</option>{coaches.map((coachItem) => <option key={coachItem.id} value={coachItem.id}>{coachItem.name}</option>)}</select></div>}
         {profile.role === "athlete" && coachInvitations.length > 0 && <section className="invitation-panel"><div><span className="eyebrow">Solicitudes pendientes</span><h2>Invitaciones de coaches</h2></div>{coachInvitations.map((invitation) => <article key={invitation.coach.id}><div><strong>{invitation.coach.name}</strong><small>{invitation.coach.email}</small></div><div><button className="secondary compact" onClick={() => answerInvitation(invitation, "reject")}>Rechazar</button><button className="primary compact" onClick={() => answerInvitation(invitation, "accept")}>Aceptar</button></div></article>)}</section>}
         {profile.role === "athlete" && <div className="date-strip">{Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() + index - 2); const value = date.toISOString().slice(0, 10); const planned = visibleSessions.find((item) => item.date === value); return <button key={value} className={selectedDate === value ? "active" : ""} onClick={() => setSelectedDate(value)}><span>{new Intl.DateTimeFormat("es", { weekday: "short" }).format(date)}</span><strong>{date.getDate()}</strong>{planned?.status === "completed" ? <CheckCircle className="session-state completed" size={13} weight="fill" /> : <Circle className={`session-state ${planned?.status ?? "empty"}`} size={planned ? 10 : 7} weight={planned?.status === "in_progress" ? "fill" : "regular"} />}</button>; })}</div>}
-        {profile.role === "coach" && coachView === "week" && (() => { const [from, to] = weekRange(weekOffset); const demoCalendar = demoSessions.filter((item) => item.coachId === profile.id && item.date >= from && item.date <= to); return <CoachComplianceCalendar from={from} to={to} sessions={demoMode ? demoCalendar : calendarSessions} athletes={athletes} summary={demoMode ? summarizeCompliance(demoCalendar) : compliance} loading={calendarLoading} onPrevious={() => setWeekOffset((value) => value - 1)} onNext={() => setWeekOffset((value) => value + 1)} />; })()}
+        {profile.role === "coach" && coachView === "week" && (() => { const [from, to] = weekRange(weekOffset); const demoCalendar = demoSessions.filter((item) => item.coachId === profile.id && item.date >= from && item.date <= to); return <CoachComplianceCalendar from={from} to={to} sessions={demoMode ? demoCalendar : calendarSessions} athletes={athletes} summary={demoMode ? summarizeCompliance(demoCalendar) : compliance} loading={calendarLoading} duplicating={duplicatingWeek} onPrevious={() => setWeekOffset((value) => value - 1)} onNext={() => setWeekOffset((value) => value + 1)} onDuplicate={(targetFrom) => duplicateWeek(from, targetFrom)} />; })()}
         {profile.role === "coach" && coachView === "plannings" && <section className="coach-session-panel">
           <div className="coach-session-title"><div><span className="eyebrow">Biblioteca del entrenador</span><h2>Planificaciones</h2></div><button className="secondary compact" onClick={() => setCreatingCoachSession((value) => !value)}>{creatingCoachSession ? "Cerrar" : "Nueva planificación"}</button></div>
           <div className="planning-search"><input aria-label="Buscar planificaciones" maxLength={80} value={planningSearch} onChange={(event) => setPlanningSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") searchPlannings(); }} placeholder="Buscar por nombre" /><button className="primary compact" disabled={loadingPlans} onClick={searchPlannings}>Buscar</button></div>

@@ -21,13 +21,17 @@ try {
   await page.getByText("Cumplimiento semanal").waitFor();
   await page.getByText("Completadas", { exact: true }).waitFor();
   await page.getByText("Pendientes", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Duplicar semana" }).click();
+  await page.getByLabel("Semana destino").waitFor();
+  await page.getByRole("button", { name: "Confirmar copia" }).click();
+  await page.getByText("Semana duplicada en modo demostración").waitFor();
   await page.getByRole("button", { name: "Semana siguiente" }).click();
   await page.getByRole("button", { name: "Planificaciones" }).click();
   await page.getByRole("heading", { name: "Planificaciones" }).waitFor();
   await page.getByRole("button", { name: "Semana" }).click();
   await page.getByText("Cumplimiento semanal").waitFor();
 
-  console.log("Coach compliance verification passed: weekly summary, navigation, and planning switch.");
+  console.log("Coach compliance verification passed: weekly summary, week duplication, navigation, and planning switch.");
 } finally {
   await browser?.close();
   await server.close();

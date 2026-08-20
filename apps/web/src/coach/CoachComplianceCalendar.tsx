@@ -1,4 +1,5 @@
-import { CaretLeft, CaretRight, CheckCircle, Clock, MinusCircle, PlayCircle, WarningCircle } from "@phosphor-icons/react";
+import { CaretLeft, CaretRight, CheckCircle, Clock, Copy, MinusCircle, PlayCircle, WarningCircle } from "@phosphor-icons/react";
+import { useEffect, useState } from "react";
 import type { Athlete, ComplianceSummary, TrainingSession } from "../types";
 
 const statusCopy = {
@@ -12,18 +13,30 @@ function shortDate(value: string) {
   return new Intl.DateTimeFormat("es-UY", { weekday: "short", day: "numeric", month: "short" }).format(new Date(`${value}T12:00:00`));
 }
 
-export function CoachComplianceCalendar({ from, to, sessions, athletes, summary, loading, onPrevious, onNext }: {
+function addDays(value: string, days: number) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+export function CoachComplianceCalendar({ from, to, sessions, athletes, summary, loading, duplicating, onPrevious, onNext, onDuplicate }: {
   from: string;
   to: string;
   sessions: TrainingSession[];
   athletes: Athlete[];
   summary: ComplianceSummary;
   loading: boolean;
+  duplicating: boolean;
   onPrevious(): void;
   onNext(): void;
+  onDuplicate(targetFrom: string): Promise<void>;
 }) {
   const athleteNames = new Map(athletes.map((athlete) => [athlete.id, athlete.name]));
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Montevideo" });
+  const [showDuplicate, setShowDuplicate] = useState(false);
+  const [targetFrom, setTargetFrom] = useState(addDays(from, 7));
+  useEffect(() => { setTargetFrom(addDays(from, 7)); setShowDuplicate(false); }, [from]);
+  const targetIsMonday = new Date(`${targetFrom}T12:00:00Z`).getUTCDay() === 1;
 
   return <section className="compliance-panel">
     <div className="week-heading">
@@ -37,6 +50,10 @@ export function CoachComplianceCalendar({ from, to, sessions, athletes, summary,
       <span><strong>{summary.pending}</strong><small>Pendientes</small></span>
       <span className={summary.overdue ? "alert" : ""}><strong>{summary.overdue}</strong><small>Vencidas</small></span>
       <span><strong>{summary.skipped}</strong><small>Omitidas</small></span>
+    </div>
+    <div className="week-actions">
+      <button className="secondary compact" disabled={!sessions.length || loading} onClick={() => setShowDuplicate((value) => !value)}><Copy weight="bold" />Duplicar semana</button>
+      {showDuplicate && <div className="duplicate-week-form"><label>Semana destino (lunes)<input aria-label="Semana destino" type="date" value={targetFrom} onChange={(event) => setTargetFrom(event.target.value)} /></label><button className="primary compact" disabled={duplicating || !targetIsMonday || targetFrom === from} onClick={async () => { await onDuplicate(targetFrom); setShowDuplicate(false); }}>{duplicating ? "Duplicando…" : "Confirmar copia"}</button>{!targetIsMonday && <small>Elegí un lunes.</small>}</div>}
     </div>
     {loading ? <p className="calendar-message">Cargando semana…</p> : sessions.length === 0 ? <p className="calendar-message">No hay sesiones asignadas en esta semana.</p> : <div className="compliance-list">
       {sessions.map((session) => {

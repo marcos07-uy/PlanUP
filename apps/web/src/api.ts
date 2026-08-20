@@ -54,6 +54,11 @@ export const api = {
     }),
   coachCalendar: (token: string, from: string, to: string, cursor?: string) =>
     request<CoachCalendarPage>(`/coach/calendar?from=${from}&to=${to}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, token),
+  duplicateWeek: (token: string, sourceFrom: string, targetFrom: string, operationId: string) =>
+    request<{ created: number; unchanged: number; skipped: number; conflicts: { athleteId: string; date: string; reason: string }[] }>("/coach/calendar/duplicate", token, {
+      method: "POST",
+      body: JSON.stringify({ sourceFrom, targetFrom, operationId }),
+    }),
   groups: (token: string) => request<AthleteGroupSummary[]>("/groups", token),
   group: (token: string, groupId: string) => request<AthleteGroup>(`/groups/${groupId}`, token),
   createGroup: (token: string, name: string) => request<AthleteGroup>("/groups", token, { method: "POST", body: JSON.stringify({ name }) }),
