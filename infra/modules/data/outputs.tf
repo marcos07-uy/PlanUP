@@ -12,3 +12,8 @@ output "gsi1_arn" {
   description = "DynamoDB GSI1 ARN."
   value       = "${aws_dynamodb_table.planup.arn}/index/GSI1"
 }
+
+output "gsi2_arn" {
+  description = "DynamoDB GSI2 ARN."
+  value       = "${aws_dynamodb_table.planup.arn}/index/GSI2"
+}

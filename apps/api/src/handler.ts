@@ -226,6 +226,47 @@ function decodeCursor(value: string | undefined) {
   }
 }
 
+function calendarMonths(from: string, to: string) {
+  const months: string[] = [];
+  const cursor = new Date(`${from.slice(0, 7)}-01T00:00:00Z`);
+  const end = to.slice(0, 7);
+  while (cursor.toISOString().slice(0, 7) <= end) {
+    months.push(cursor.toISOString().slice(0, 7));
+    cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return months;
+}
+
+function assertCalendarRange(from: string | undefined, to: string | undefined) {
+  assertDate(from);
+  assertDate(to);
+  const fromTime = Date.parse(`${from}T00:00:00Z`);
+  const toTime = Date.parse(`${to}T00:00:00Z`);
+  if (!Number.isFinite(fromTime) || !Number.isFinite(toTime) || fromTime > toTime || (toTime - fromTime) / 86_400_000 > 30) {
+    throw Object.assign(new Error("Calendar range must contain between 1 and 31 days"), { statusCode: 400 });
+  }
+}
+
+function encodeCalendarCursor(monthIndex: number, key?: Record<string, unknown>) {
+  return Buffer.from(JSON.stringify({ monthIndex, key })).toString("base64url");
+}
+
+function decodeCalendarCursor(value: string | undefined, monthCount: number) {
+  if (!value) return { monthIndex: 0, key: undefined };
+  try {
+    const cursor = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as { monthIndex?: unknown; key?: unknown };
+    if (!Number.isInteger(cursor.monthIndex) || Number(cursor.monthIndex) < 0 || Number(cursor.monthIndex) >= monthCount) throw new Error("Invalid month");
+    if (cursor.key !== undefined && (!cursor.key || typeof cursor.key !== "object" || Array.isArray(cursor.key))) throw new Error("Invalid key");
+    return { monthIndex: Number(cursor.monthIndex), key: cursor.key as Record<string, unknown> | undefined };
+  } catch {
+    throw Object.assign(new Error("Invalid calendar cursor"), { statusCode: 400 });
+  }
+}
+
+function todayInTimezone(timezone: string) {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+
 export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJWTAuthorizer {
   return async (event) => {
   try {
@@ -394,6 +435,58 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       });
     }
 
+    if (path === "/coach/calendar" && method === "GET") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can view team compliance" });
+      const from = event.queryStringParameters?.from;
+      const to = event.queryStringParameters?.to;
+      assertCalendarRange(from, to);
+      const months = calendarMonths(from!, to!);
+      const cursor = decodeCalendarCursor(event.queryStringParameters?.cursor, months.length);
+      if (cursor.key && cursor.key.GSI2PK !== `COACH#${identity.id}#${months[cursor.monthIndex]}`) return response(400, { message: "Invalid calendar cursor" });
+      const athleteId = event.queryStringParameters?.athleteId;
+      const status = event.queryStringParameters?.status;
+      if (status && !["pending", "in_progress", "completed", "skipped", "overdue"].includes(status)) return response(400, { message: "Invalid calendar status" });
+
+      const items: Record<string, unknown>[] = [];
+      let nextCursor: string | undefined;
+      for (let monthIndex = cursor.monthIndex; monthIndex < months.length && items.length < 500; monthIndex += 1) {
+        const result = await database.send(new QueryCommand({
+          TableName: tableName,
+          IndexName: "GSI2",
+          KeyConditionExpression: "GSI2PK = :pk AND GSI2SK BETWEEN :from AND :to",
+          ExpressionAttributeValues: {
+            ":pk": `COACH#${identity.id}#${months[monthIndex]}`,
+            ":from": `DATE#${from}#ATHLETE#`,
+            ":to": `DATE#${to}#ATHLETE#~`,
+          },
+          ExclusiveStartKey: monthIndex === cursor.monthIndex ? cursor.key : undefined,
+          Limit: 500 - items.length,
+        }));
+        items.push(...(result.Items ?? []));
+        if (result.LastEvaluatedKey) {
+          nextCursor = encodeCalendarCursor(monthIndex, result.LastEvaluatedKey);
+          break;
+        }
+        if (items.length >= 500 && monthIndex + 1 < months.length) nextCursor = encodeCalendarCursor(monthIndex + 1);
+      }
+
+      const today = todayInTimezone("America/Montevideo");
+      const sessions = items.map(sessionFromItem).filter((session) => {
+        const sessionStatus = String(session.status);
+        const overdue = sessionStatus === "pending" && String(session.date) < today;
+        return (!athleteId || session.athleteId === athleteId) && (!status || status === sessionStatus || (status === "overdue" && overdue));
+      });
+      const summary = { total: sessions.length, completed: 0, inProgress: 0, skipped: 0, pending: 0, overdue: 0 };
+      for (const session of sessions) {
+        if (session.status === "completed") summary.completed += 1;
+        else if (session.status === "in_progress") summary.inProgress += 1;
+        else if (session.status === "skipped") summary.skipped += 1;
+        else if (String(session.date) < today) summary.overdue += 1;
+        else summary.pending += 1;
+      }
+      return response(200, { items: sessions, summary, nextCursor });
+    }
+
     const coachSessionDetailMatch = path.match(/^\/coach-sessions\/([^/]+)\/([^/]+)$/);
     if (coachSessionDetailMatch && method === "GET") {
       if (identity.role !== "coach") return response(403, { message: "Only coaches can manage coach sessions" });
@@ -471,10 +564,12 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
               content: coachSession.Item?.content,
               contentFormat: "text-v1",
               sourcePlanningId: sessionId,
-              sourcePlanningDate: date,
-              status: "pending",
-              executionVersion: existing.Item?.executionVersion ?? 0,
-              updatedAt,
+            sourcePlanningDate: date,
+            status: "pending",
+            executionVersion: existing.Item?.executionVersion ?? 0,
+            GSI2PK: `COACH#${identity.id}#${assignmentDate.slice(0, 7)}`,
+            GSI2SK: `DATE#${assignmentDate}#ATHLETE#${athleteId}`,
+            updatedAt,
             },
             ConditionExpression: existing.Item
               ? "(#status = :pending OR attribute_not_exists(#status)) AND (attribute_not_exists(executionVersion) OR executionVersion = :executionVersion)"

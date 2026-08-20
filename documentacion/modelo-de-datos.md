@@ -100,6 +100,8 @@ Aceptar crea las dos relaciones y elimina la invitación. Rechazar solamente eli
     "rpe": 8,
     "comment": "Buena sesión"
   },
+  "GSI2PK": "COACH#<coach-sub>#2026-08",
+  "GSI2SK": "DATE#2026-08-18#ATHLETE#<athlete-sub>",
   "updatedAt": "2026-08-18T20:00:00.000Z"
 }
 ```
@@ -141,8 +143,8 @@ La fecha identifica cuándo se creó la planificación y forma parte de su clave
 | Obtener una planificación | `GetItem(COACH#coach, COACH_SESSION#date#id)`. |
 | Asignar planificación | `GetItem` de la planificación, validación de vínculos y un `PutItem` por atleta/fecha. |
 | Listar sesiones por coach y fechas | `Query PK = ATHLETE#athlete`, `SK BETWEEN SESSION#coach#from AND SESSION#coach#to`. |
-| Guardar sesión | `PutItem(ATHLETE#athlete, SESSION#coach#date)`. |
-| Eliminar sesión | `DeleteItem(ATHLETE#athlete, SESSION#coach#date)`. |
+| Actualizar ejecución | `UpdateItem(ATHLETE#athlete, SESSION#coach#date)` condicionado por `executionVersion`. |
+| Ver cumplimiento del coach | Una `Query` por mes en `GSI2`, usando `GSI2PK = COACH#coach#YYYY-MM` y un rango de fechas en `GSI2SK`. |
 
 No se utiliza `Scan`. Esto mantiene bajo el consumo de lecturas aunque crezca la tabla.
 

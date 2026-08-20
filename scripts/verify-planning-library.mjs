@@ -22,6 +22,7 @@ try {
   page.setDefaultTimeout(10_000);
 
   await page.goto(appUrl);
+  await page.getByRole("button", { name: "Planificaciones" }).click();
   await page.getByRole("heading", { name: "Planificaciones" }).waitFor();
   await page.getByText(/Creada \d{2}\/\d{2}\/\d{4}/).waitFor();
   await page.getByRole("button", { name: /Fuerza y AMRAP/ }).hover();

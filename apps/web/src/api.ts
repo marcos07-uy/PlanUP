@@ -1,4 +1,4 @@
-import type { Athlete, Coach, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, SessionResult, TrainingSession, UserProfile } from "./types";
+import type { Athlete, Coach, CoachCalendarPage, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, SessionResult, TrainingSession, UserProfile } from "./types";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -48,4 +48,6 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ status, result, expectedVersion, clientMutationId }),
     }),
+  coachCalendar: (token: string, from: string, to: string, cursor?: string) =>
+    request<CoachCalendarPage>(`/coach/calendar?from=${from}&to=${to}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, token),
 };

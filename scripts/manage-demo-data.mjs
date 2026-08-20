@@ -128,7 +128,7 @@ function buildItems(seededGroups) {
     athletes.forEach((athlete, athleteIndex) => group.schedule[athleteIndex].forEach((planIndex, dayOffset) => {
       const [, content] = group.plans[planIndex];
       const date = isoDay(dayOffset);
-      items.push({ PK: `ATHLETE#${athlete.id}`, SK: `SESSION#${coach.id}#${date}`, entityType: "SESSION", athleteId: athlete.id, coachId: coach.id, date, content, contentFormat: "text-v1", status: "pending", executionVersion: 0, updatedAt: now, seedId: SEED_ID });
+      items.push({ PK: `ATHLETE#${athlete.id}`, SK: `SESSION#${coach.id}#${date}`, entityType: "SESSION", athleteId: athlete.id, coachId: coach.id, date, content, contentFormat: "text-v1", status: "pending", executionVersion: 0, GSI2PK: `COACH#${coach.id}#${date.slice(0, 7)}`, GSI2SK: `DATE#${date}#ATHLETE#${athlete.id}`, updatedAt: now, seedId: SEED_ID });
     }));
   }
   return items;
