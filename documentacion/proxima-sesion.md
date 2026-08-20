@@ -37,6 +37,8 @@ Fecha de contexto: 19 de agosto de 2026.
 
 ## Qué no está hecho
 
+> La publicación Android queda deliberadamente postergada hasta cerrar las funcionalidades del desarrollo inicial. El roadmap completo está en [TODO Android y Google Play](todo-android-play-store.md).
+
 - No se probó el flujo real completo con Cognito y DynamoDB desplegados.
 - No hay backend de invitaciones o aprobación de entrenadores.
 - No hay recuperación de contraseña en la interfaz.
