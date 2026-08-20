@@ -59,7 +59,8 @@ flowchart LR
 
 - Una tabla DynamoDB en modo `PAY_PER_REQUEST`.
 - Claves genéricas `PK` y `SK` permiten guardar varios tipos de entidad.
-- Un índice `GSI1` resuelve usuarios por email.
+- `GSI1` resuelve usuarios por email.
+- `GSI2` consulta sesiones por entrenador, mes, fecha y atleta sin consultas N+1.
 - Point-in-time recovery y cifrado en reposo están habilitados.
 - Las consultas de sesiones usan claves compuestas por coach y rangos de fecha; no hacen table scans.
 

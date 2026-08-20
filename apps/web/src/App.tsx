@@ -13,6 +13,7 @@ import {
 } from "@phosphor-icons/react";
 import { api } from "./api";
 import { SessionExecutionCard } from "./athlete/SessionExecutionCard";
+import { CoachComplianceCalendar } from "./coach/CoachComplianceCalendar";
 import {
   confirm,
   confirmPasswordReset,
@@ -24,7 +25,7 @@ import {
   signUp,
 } from "./auth";
 import { demoAthleteProfile, demoAthletes, demoCoachInvitations, demoCoaches, demoCoachSessions, demoProfile, demoSessions } from "./demo";
-import type { Athlete, Coach, CoachInvitation, CoachSession, CoachSessionSummary, Role, SessionResult, TrainingSession, UserProfile } from "./types";
+import type { Athlete, Coach, CoachInvitation, CoachSession, CoachSessionSummary, ComplianceSummary, Role, SessionResult, TrainingSession, UserProfile } from "./types";
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === "true";
 const demoUserProfile = import.meta.env.VITE_DEMO_ROLE === "athlete" ? demoAthleteProfile : demoProfile;
@@ -34,6 +35,28 @@ const monthRange = () => {
   from.setDate(1);
   const to = new Date(from.getFullYear(), from.getMonth() + 1, 0);
   return [from.toISOString().slice(0, 10), to.toISOString().slice(0, 10)];
+};
+const weekRange = (offset = 0) => {
+  const coachToday = new Date().toLocaleDateString("en-CA", { timeZone: "America/Montevideo" });
+  const from = new Date(`${coachToday}T12:00:00Z`);
+  const day = from.getUTCDay() || 7;
+  from.setUTCDate(from.getUTCDate() - day + 1 + offset * 7);
+  const to = new Date(from);
+  to.setUTCDate(from.getUTCDate() + 6);
+  return [from.toISOString().slice(0, 10), to.toISOString().slice(0, 10)] as const;
+};
+const emptyCompliance: ComplianceSummary = { total: 0, completed: 0, inProgress: 0, skipped: 0, pending: 0, overdue: 0 };
+const summarizeCompliance = (items: TrainingSession[]) => {
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Montevideo" });
+  const summary = { ...emptyCompliance, total: items.length };
+  for (const item of items) {
+    if (item.status === "completed") summary.completed += 1;
+    else if (item.status === "in_progress") summary.inProgress += 1;
+    else if (item.status === "skipped") summary.skipped += 1;
+    else if (item.date < today) summary.overdue += 1;
+    else summary.pending += 1;
+  }
+  return summary;
 };
 const prettyDate = (value: string) => {
   const formatted = new Intl.DateTimeFormat("es-UY", { weekday: "long", day: "numeric", month: "long" }).format(
@@ -224,11 +247,33 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   const [assignmentDate, setAssignmentDate] = useState(today());
   const [notice, setNotice] = useState("");
   const [mobileTeamOpen, setMobileTeamOpen] = useState(false);
+  const [coachView, setCoachView] = useState<"week" | "plannings">("week");
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [calendarSessions, setCalendarSessions] = useState<TrainingSession[]>([]);
+  const [compliance, setCompliance] = useState<ComplianceSummary>(emptyCompliance);
+  const [calendarLoading, setCalendarLoading] = useState(false);
 
   useEffect(() => {
     if (demoMode || profile.role !== "coach") return;
     api.athletes(token).then((items) => { setAthletes(items); setSelected(items[0] ?? null); });
   }, [profile.role, token]);
+
+  useEffect(() => {
+    if (demoMode || profile.role !== "coach" || coachView !== "week") return;
+    const [from, to] = weekRange(weekOffset);
+    setCalendarLoading(true);
+    (async () => {
+      const all: TrainingSession[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await api.coachCalendar(token, from, to, cursor);
+        all.push(...page.items);
+        cursor = page.nextCursor;
+      } while (cursor);
+      setCalendarSessions(all.sort((a, b) => a.date.localeCompare(b.date) || a.athleteId.localeCompare(b.athleteId)));
+      setCompliance(summarizeCompliance(all));
+    })().catch((cause) => setNotice(errorMessage(cause))).finally(() => setCalendarLoading(false));
+  }, [coachView, profile.role, token, weekOffset]);
 
   useEffect(() => {
     if (profile.role !== "athlete" || demoMode) return;
@@ -368,10 +413,12 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
     <main className={`dashboard ${profile.role}`}>
       {profile.role === "coach" && <aside className={`athletes-panel ${mobileTeamOpen ? "mobile-open" : ""}`}><div className="panel-title"><div><span className="eyebrow">Equipo</span><h2>Atletas</h2></div><button className="icon-button" onClick={addAthlete} aria-label="Agregar atleta"><Plus size={22} weight="bold" /></button></div><div className="athlete-list">{athletes.map((athlete) => <button key={athlete.id} className={selected?.id === athlete.id ? "selected" : ""} onClick={() => { setSelected(athlete); setMobileTeamOpen(false); }}><span className="avatar">{athlete.name.slice(0, 1).toUpperCase()}</span><span><strong>{athlete.name}</strong><small>{athlete.email}</small></span></button>)}</div></aside>}
       <section className="session-panel">
+        {profile.role === "coach" && <nav className="coach-navigation" aria-label="Secciones del entrenador"><button className={coachView === "week" ? "active" : ""} onClick={() => setCoachView("week")}>Semana</button><button className={coachView === "plannings" ? "active" : ""} onClick={() => setCoachView("plannings")}>Planificaciones</button></nav>}
         {profile.role === "athlete" && <div className="athlete-selector coach-selector"><span>Coach</span><select aria-label="Coach seleccionado" value={selectedCoachId} onChange={(event) => setSelectedCoachId(event.target.value)} disabled={!coaches.length}><option value="">{coaches.length ? "Seleccioná un coach" : "Todavía no tenés coaches"}</option>{coaches.map((coachItem) => <option key={coachItem.id} value={coachItem.id}>{coachItem.name}</option>)}</select></div>}
         {profile.role === "athlete" && coachInvitations.length > 0 && <section className="invitation-panel"><div><span className="eyebrow">Solicitudes pendientes</span><h2>Invitaciones de coaches</h2></div>{coachInvitations.map((invitation) => <article key={invitation.coach.id}><div><strong>{invitation.coach.name}</strong><small>{invitation.coach.email}</small></div><div><button className="secondary compact" onClick={() => answerInvitation(invitation, "reject")}>Rechazar</button><button className="primary compact" onClick={() => answerInvitation(invitation, "accept")}>Aceptar</button></div></article>)}</section>}
         {profile.role === "athlete" && <div className="date-strip">{Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() + index - 2); const value = date.toISOString().slice(0, 10); const planned = visibleSessions.find((item) => item.date === value); return <button key={value} className={selectedDate === value ? "active" : ""} onClick={() => setSelectedDate(value)}><span>{new Intl.DateTimeFormat("es", { weekday: "short" }).format(date)}</span><strong>{date.getDate()}</strong>{planned?.status === "completed" ? <CheckCircle className="session-state completed" size={13} weight="fill" /> : <Circle className={`session-state ${planned?.status ?? "empty"}`} size={planned ? 10 : 7} weight={planned?.status === "in_progress" ? "fill" : "regular"} />}</button>; })}</div>}
-        {profile.role === "coach" && <section className="coach-session-panel">
+        {profile.role === "coach" && coachView === "week" && (() => { const [from, to] = weekRange(weekOffset); const demoCalendar = demoSessions.filter((item) => item.coachId === profile.id && item.date >= from && item.date <= to); return <CoachComplianceCalendar from={from} to={to} sessions={demoMode ? demoCalendar : calendarSessions} athletes={athletes} summary={demoMode ? summarizeCompliance(demoCalendar) : compliance} loading={calendarLoading} onPrevious={() => setWeekOffset((value) => value - 1)} onNext={() => setWeekOffset((value) => value + 1)} />; })()}
+        {profile.role === "coach" && coachView === "plannings" && <section className="coach-session-panel">
           <div className="coach-session-title"><div><span className="eyebrow">Biblioteca del entrenador</span><h2>Planificaciones</h2></div><button className="secondary compact" onClick={() => setCreatingCoachSession((value) => !value)}>{creatingCoachSession ? "Cerrar" : "Nueva planificación"}</button></div>
           {creatingCoachSession && <div className="coach-session-editor"><input aria-label="Nombre de la planificación" autoFocus maxLength={120} value={coachSessionTitle} onChange={(event) => setCoachSessionTitle(event.target.value)} placeholder="Ej.: Fuerza y AMRAP" /><textarea aria-label="Contenido de la planificación" value={coachSessionContent} onChange={(event) => setCoachSessionContent(event.target.value)} placeholder={"==warmup\n\n==fuerza\n\n==wod"} /><button className="primary compact" disabled={!coachSessionTitle.trim() || !coachSessionContent.trim()} onClick={createCoachSession}>Guardar planificación</button></div>}
           <div className="coach-session-grid">{planningLibrary.length ? planningLibrary.map((item) => <button key={item.id} className={selectedCoachSummary?.id === item.id ? "selected" : ""} onClick={() => { setSelectedCoachSessionId(item.id); setSelectedCoachSession(null); setAssignAthleteIds([]); }}><strong>{item.title ?? "Planificación"}</strong><small>Creada {new Intl.DateTimeFormat("es-UY", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${item.date}T12:00:00`))}</small><span className="planning-card-preview" role="tooltip">{item.summary}</span></button>) : <p>Todavía no creaste planificaciones.</p>}</div>

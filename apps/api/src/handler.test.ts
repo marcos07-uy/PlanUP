@@ -7,6 +7,7 @@ type Item = Record<string, unknown> & { PK: string; SK: string };
 
 class MemoryDb {
   items = new Map<string, Item>();
+  queryCount = 0;
 
   seed(...items: Item[]) {
     for (const item of items) this.items.set(this.key(item.PK, item.SK), structuredClone(item));
@@ -87,10 +88,22 @@ class MemoryDb {
     }
 
     if (command.constructor.name === "QueryCommand") {
+      this.queryCount += 1;
       const values = input.ExpressionAttributeValues ?? {};
       const items = [...this.items.values()];
       if (input.IndexName === "GSI1") {
         return { Items: items.filter((item) => item.GSI1PK === values[":email"]) };
+      }
+      if (input.IndexName === "GSI2") {
+        let matches = items
+          .filter((item) => item.GSI2PK === values[":pk"] && String(item.GSI2SK) >= String(values[":from"]) && String(item.GSI2SK) <= String(values[":to"]))
+          .sort((a, b) => String(a.GSI2SK).localeCompare(String(b.GSI2SK)));
+        if (input.ExclusiveStartKey) {
+          const startIndex = matches.findIndex((item) => item.PK === input.ExclusiveStartKey?.PK && item.SK === input.ExclusiveStartKey?.SK);
+          if (startIndex >= 0) matches = matches.slice(startIndex + 1);
+        }
+        const page = input.Limit ? matches.slice(0, input.Limit) : matches;
+        return { Items: page, LastEvaluatedKey: input.Limit && matches.length > input.Limit ? structuredClone(page.at(-1)) : undefined };
       }
       if (values[":athlete"]) {
         return { Items: items.filter((item) => item.PK === values[":pk"] && item.SK.startsWith(String(values[":athlete"]))) };
@@ -350,6 +363,38 @@ describe("PlanUp API handler", () => {
     assert.equal(blocked.json.assigned, 0);
     assert.equal(blocked.json.conflicts[0].reason, "session_completed");
     assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-25")?.content, "Old content");
+  });
+
+  it("returns weekly compliance for all coach athletes with one bounded index query", async () => {
+    db.seed(
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-18", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-18", content: "One", status: "completed", GSI2PK: "COACH#coach-1#2026-08", GSI2SK: "DATE#2026-08-18#ATHLETE#athlete-1" },
+      { PK: "ATHLETE#athlete-2", SK: "SESSION#coach-1#2026-08-19", entityType: "SESSION", athleteId: "athlete-2", coachId: "coach-1", date: "2026-08-19", content: "Two", status: "pending", GSI2PK: "COACH#coach-1#2026-08", GSI2SK: "DATE#2026-08-19#ATHLETE#athlete-2" },
+      { PK: "ATHLETE#athlete-3", SK: "SESSION#coach-1#2026-08-20", entityType: "SESSION", athleteId: "athlete-3", coachId: "coach-1", date: "2026-08-20", content: "Three", status: "in_progress", GSI2PK: "COACH#coach-1#2026-08", GSI2SK: "DATE#2026-08-20#ATHLETE#athlete-3" },
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-2#2026-08-18", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-2", date: "2026-08-18", content: "Foreign", status: "completed", GSI2PK: "COACH#coach-2#2026-08", GSI2SK: "DATE#2026-08-18#ATHLETE#athlete-1" },
+    );
+    const result = await invoke(db, event("GET", "/coach/calendar", coach, { query: { from: "2026-08-17", to: "2026-08-23" } }));
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.json.items.length, 3);
+    assert.deepEqual(result.json.summary, { total: 3, completed: 1, inProgress: 1, skipped: 0, pending: 0, overdue: 1 });
+    assert.equal(db.queryCount, 1);
+  });
+
+  it("rejects calendar ranges longer than 31 days and athlete access", async () => {
+    const tooLong = await invoke(db, event("GET", "/coach/calendar", coach, { query: { from: "2026-08-01", to: "2026-09-01" } }));
+    const forbidden = await invoke(db, event("GET", "/coach/calendar", athlete, { query: { from: "2026-08-17", to: "2026-08-23" } }));
+    assert.equal(tooLong.statusCode, 400);
+    assert.equal(forbidden.statusCode, 403);
+  });
+
+  it("uses two monthly index queries when a week crosses a month", async () => {
+    db.seed(
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-31", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-31", content: "August", status: "pending", GSI2PK: "COACH#coach-1#2026-08", GSI2SK: "DATE#2026-08-31#ATHLETE#athlete-1" },
+      { PK: "ATHLETE#athlete-2", SK: "SESSION#coach-1#2026-09-01", entityType: "SESSION", athleteId: "athlete-2", coachId: "coach-1", date: "2026-09-01", content: "September", status: "pending", GSI2PK: "COACH#coach-1#2026-09", GSI2SK: "DATE#2026-09-01#ATHLETE#athlete-2" },
+    );
+    const result = await invoke(db, event("GET", "/coach/calendar", coach, { query: { from: "2026-08-31", to: "2026-09-06" } }));
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.json.items.length, 2);
+    assert.equal(db.queryCount, 2);
   });
 
   it("keeps sessions from different coaches isolated on the same date", async () => {

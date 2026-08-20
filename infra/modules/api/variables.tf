@@ -38,6 +38,11 @@ variable "table_gsi1_arn" {
   type        = string
 }
 
+variable "table_gsi2_arn" {
+  description = "DynamoDB GSI2 ARN used in Lambda IAM policy."
+  type        = string
+}
+
 variable "cognito_client_id" {
   description = "Cognito app client ID accepted by the API authorizer."
   type        = string

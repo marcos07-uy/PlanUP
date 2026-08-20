@@ -54,6 +54,21 @@ export interface SessionResult {
   comment?: string;
 }
 
+export interface ComplianceSummary {
+  total: number;
+  completed: number;
+  inProgress: number;
+  skipped: number;
+  pending: number;
+  overdue: number;
+}
+
+export interface CoachCalendarPage {
+  items: TrainingSession[];
+  summary: ComplianceSummary;
+  nextCursor?: string;
+}
+
 export interface CoachSessionSummary {
   id: string;
   title?: string;

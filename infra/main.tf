@@ -16,6 +16,7 @@ locals {
     "POST /coach-sessions",
     "POST /coach-sessions/{date}/{sessionId}/assign",
     "PUT /me/sessions/{coachId}/{date}/execution",
+    "GET /coach/calendar",
     "GET /athletes/{athleteId}/sessions",
   ])
 }
@@ -55,6 +56,7 @@ module "api" {
   table_name                 = module.data.table_name
   table_arn                  = module.data.table_arn
   table_gsi1_arn             = module.data.gsi1_arn
+  table_gsi2_arn             = module.data.gsi2_arn
   cognito_client_id          = module.auth.client_id
   cognito_user_pool_endpoint = module.auth.user_pool_endpoint
 }
