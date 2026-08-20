@@ -41,21 +41,21 @@ export function CoachComplianceCalendar({ from, to, sessions, athletes, summary,
   return <section className="compliance-panel">
     <div className="week-heading">
       <button aria-label="Semana anterior" onClick={onPrevious}><CaretLeft weight="bold" /></button>
-      <div><span className="eyebrow">Cumplimiento semanal</span><h2>{shortDate(from)} — {shortDate(to)}</h2></div>
+      <div><span className="eyebrow">Agenda semanal</span><h2>{shortDate(from)} — {shortDate(to)}</h2></div>
       <button aria-label="Semana siguiente" onClick={onNext}><CaretRight weight="bold" /></button>
     </div>
-    <div className="compliance-summary">
+    {sessions.length > 0 && <div className="compliance-summary">
       <span><strong>{summary.completed}</strong><small>Completadas</small></span>
       <span><strong>{summary.inProgress}</strong><small>En curso</small></span>
       <span><strong>{summary.pending}</strong><small>Pendientes</small></span>
       <span className={summary.overdue ? "alert" : ""}><strong>{summary.overdue}</strong><small>Vencidas</small></span>
       <span><strong>{summary.skipped}</strong><small>Omitidas</small></span>
-    </div>
+    </div>}
     <div className="week-actions">
       <button className="secondary compact" disabled={!sessions.length || loading} onClick={() => setShowDuplicate((value) => !value)}><Copy weight="bold" />Duplicar semana</button>
       {showDuplicate && <div className="duplicate-week-form"><label>Semana destino (lunes)<input aria-label="Semana destino" type="date" value={targetFrom} onChange={(event) => setTargetFrom(event.target.value)} /></label><button className="primary compact" disabled={duplicating || !targetIsMonday || targetFrom === from} onClick={async () => { await onDuplicate(targetFrom); setShowDuplicate(false); }}>{duplicating ? "Duplicando…" : "Confirmar copia"}</button>{!targetIsMonday && <small>Elegí un lunes.</small>}</div>}
     </div>
-    {loading ? <p className="calendar-message">Cargando semana…</p> : sessions.length === 0 ? <p className="calendar-message">No hay sesiones asignadas en esta semana.</p> : <div className="compliance-list">
+    {loading ? <p className="calendar-message">Cargando semana…</p> : sessions.length === 0 ? <p className="calendar-message"><strong>No hay sesiones esta semana.</strong><span>Usá las flechas para revisar otra semana o asigná una planificación desde la biblioteca.</span></p> : <div className="compliance-list">
       {sessions.map((session) => {
         const overdue = session.status === "pending" && session.date < today;
         const state = statusCopy[session.status];

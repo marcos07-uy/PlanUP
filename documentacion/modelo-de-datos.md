@@ -137,6 +137,12 @@ Un grupo se guarda como `PK = COACH#coach`, `SK = GROUP#group`. Cada miembro gen
 
 Al asignar, la API consulta los miembros de cada grupo, los une con los atletas seleccionados individualmente y elimina IDs repetidos. Se crean sesiones concretas: modificar la membresía posteriormente no altera asignaciones anteriores.
 
+### Programas reutilizables
+
+El encabezado usa `PK = COACH#coach`, `SK = PROGRAM#program` y contiene `name`, `weeks` y `dayCount`. Cada día usa `PK = PROGRAM#coach#program`, `SK = DAY#<offset con tres dígitos>`, `entityType = PROGRAM_DAY`, `dayOffset`, `title`, `content`, `sourcePlanningId` y `sourcePlanningDate`.
+
+Los días son instantáneas de planificaciones existentes: editar después la planificación original no cambia el programa. Al asignarlo, `dayOffset` se suma al lunes inicial y se crea una `SESSION` por atleta y día con `sourceProgramId`, `sourceProgramDayOffset` y `programAssignmentOperationId`. Esto hace predecible el programa, permite reintentos parciales y conserva el historial aunque luego se elimine la plantilla.
+
 La duplicación semanal materializa nuevas `SESSION` para los mismos atletas y desplaza cada fecha por semanas completas. Cada copia guarda `duplicatedFrom` y `duplicateWeekOperationId`, comienza en `pending` con `executionVersion = 0` y no hereda resultados. La clave natural y un `PutItem` condicional impiden sobrescribir una sesión que ya exista en el destino.
 
 ## Patrones de acceso
@@ -155,9 +161,13 @@ La duplicación semanal materializa nuevas `SESSION` para los mismos atletas y d
 | Listar sesiones por coach y fechas | `Query PK = ATHLETE#athlete`, `SK BETWEEN SESSION#coach#from AND SESSION#coach#to`. |
 | Actualizar ejecución | `UpdateItem(ATHLETE#athlete, SESSION#coach#date)` condicionado por `executionVersion`. |
 | Ver cumplimiento del coach | Una `Query` por mes en `GSI2`, usando `GSI2PK = COACH#coach#YYYY-MM` y un rango de fechas en `GSI2SK`. |
+| Compatibilidad semanal | Para rangos de hasta siete días, `Query` acotada de hasta 50 atletas y `BatchGetItem` de las claves de sesión; los resultados se deduplican con `GSI2`. |
 | Duplicar semana | Una `Query` por mes origen en `GSI2`, seguida por `GetItem` y `PutItem` condicional por sesión destino; máximo 200 sesiones. |
 | Listar grupos | `Query PK = COACH#coach`, rango `GROUP#` a `GROUP#~`. |
 | Listar miembros | `Query PK = GROUP#coach#group`, `begins_with(SK, ATHLETE#)`. |
+| Listar programas | `Query PK = COACH#coach`, rango `PROGRAM#` a `PROGRAM#~`, con `Limit` y cursor opaco. |
+| Obtener programa | `GetItem` del encabezado y `Query PK = PROGRAM#coach#program`, rango `DAY#` a `DAY#~`. |
+| Asignar programa | Una `Query` de días, resolución de grupos y `GetItem`/`PutItem` condicional por atleta y día; máximo 500 sesiones. |
 
 No se utiliza `Scan`. Esto mantiene bajo el consumo de lecturas aunque crezca la tabla.
 

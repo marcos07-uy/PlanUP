@@ -23,6 +23,7 @@ class MemoryDb {
       ExpressionAttributeValues?: Record<string, unknown>;
       ConditionExpression?: string;
       TransactItems?: Array<{ Put?: { Item: Item }; Delete?: { Key: { PK: string; SK: string } } }>;
+      RequestItems?: Record<string, { Keys: { PK: string; SK: string }[] }>;
       ExclusiveStartKey?: { PK: string; SK: string };
       Limit?: number;
       ScanIndexForward?: boolean;
@@ -47,6 +48,11 @@ class MemoryDb {
     if (command.constructor.name === "GetCommand") {
       if (!input.Key) throw new Error("GetCommand Key is required");
       return { Item: this.items.get(this.key(input.Key.PK, input.Key.SK)) };
+    }
+
+    if (command.constructor.name === "BatchGetCommand") {
+      const request = Object.values(input.RequestItems ?? {})[0];
+      return { Responses: { "planup-test": (request?.Keys ?? []).map((key) => this.items.get(this.key(key.PK, key.SK))).filter(Boolean) } };
     }
 
     if (command.constructor.name === "DeleteCommand") {
@@ -330,6 +336,17 @@ describe("PlanUp API handler", () => {
     assert.equal(stale.statusCode, 409);
   });
 
+  it("deletes a planning without deleting assigned session snapshots", async () => {
+    db.seed(
+      { PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-18#base-1", entityType: "COACH_SESSION", id: "base-1", coachId: "coach-1", title: "Disposable", date: "2026-08-18", content: "Plan" },
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-25", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-25", content: "Plan", status: "pending" },
+    );
+    const deleted = await invoke(db, event("DELETE", "/coach-sessions/2026-08-18/base-1", coach));
+    assert.equal(deleted.statusCode, 204);
+    assert.equal(db.get("COACH#coach-1", "COACH_SESSION#2026-08-18#base-1"), undefined);
+    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-25")?.content, "Plan");
+  });
+
   it("duplicates a planning idempotently", async () => {
     db.seed({ PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-18#base-1", entityType: "COACH_SESSION", id: "base-1", coachId: "coach-1", title: "Original", date: "2026-08-18", content: "Plan", version: 1 });
     const body = { operationId: "11111111-1111-4111-8111-111111111111", date: "2026-08-20" };
@@ -339,6 +356,35 @@ describe("PlanUp API handler", () => {
     assert.equal(retry.statusCode, 200);
     assert.equal(first.json.id, retry.json.id);
     assert.equal(first.json.title, "Original (copia)");
+  });
+
+  it("creates and assigns a reusable multi-week program idempotently", async () => {
+    db.seed(
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-2", entityType: "COACH_ATHLETE", athleteId: "athlete-2" },
+      { PK: "COACH#coach-1", SK: "GROUP#group-1", entityType: "GROUP", id: "group-1", name: "Team" },
+      { PK: "GROUP#coach-1#group-1", SK: "ATHLETE#athlete-2", entityType: "GROUP_MEMBERSHIP", athleteId: "athlete-2" },
+      { PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-01#plan-1", entityType: "COACH_SESSION", id: "plan-1", title: "Strength", date: "2026-08-01", content: "Squat" },
+      { PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-02#plan-2", entityType: "COACH_SESSION", id: "plan-2", title: "Conditioning", date: "2026-08-02", content: "Run" },
+    );
+    const created = await invoke(db, event("POST", "/programs", coach, { body: { name: "Base 2 weeks", weeks: 2, days: [
+      { dayOffset: 0, sourcePlanningId: "plan-1", sourcePlanningDate: "2026-08-01" },
+      { dayOffset: 9, sourcePlanningId: "plan-2", sourcePlanningDate: "2026-08-02" },
+    ] } }));
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.json.dayCount, 2);
+    const listed = await invoke(db, event("GET", "/programs", coach, { query: { limit: "20" } }));
+    assert.equal(listed.json.items[0].name, "Base 2 weeks");
+
+    const body = { startDate: "2026-08-24", athleteIds: ["athlete-1"], groupIds: ["group-1"], operationId: "22222222-2222-4222-8222-222222222222" };
+    const first = await invoke(db, event("POST", `/programs/${created.json.id}/assign`, coach, { body }));
+    const retry = await invoke(db, event("POST", `/programs/${created.json.id}/assign`, coach, { body }));
+    assert.deepEqual({ created: first.json.created, unchanged: first.json.unchanged, skipped: first.json.skipped }, { created: 4, unchanged: 0, skipped: 0 });
+    assert.deepEqual({ created: retry.json.created, unchanged: retry.json.unchanged, skipped: retry.json.skipped }, { created: 0, unchanged: 4, skipped: 0 });
+    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-24")?.content, "Squat");
+    assert.equal(db.get("ATHLETE#athlete-2", "SESSION#coach-1#2026-09-02")?.content, "Run");
+    const detail = await invoke(db, event("GET", `/programs/${created.json.id}`, coach));
+    assert.deepEqual(detail.json.days.map((day: { dayOffset: number }) => day.dayOffset), [0, 9]);
   });
 
   it("assigns one coach planning to multiple linked athletes on a selected date", async () => {
@@ -426,18 +472,24 @@ describe("PlanUp API handler", () => {
     assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-25")?.content, "Old content");
   });
 
-  it("returns weekly compliance for all coach athletes with one bounded index query", async () => {
+  it("returns weekly compliance including legacy sessions without per-athlete queries", async () => {
     db.seed(
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-2", entityType: "COACH_ATHLETE", athleteId: "athlete-2" },
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-3", entityType: "COACH_ATHLETE", athleteId: "athlete-3" },
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-4", entityType: "COACH_ATHLETE", athleteId: "athlete-4" },
       { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-18", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-18", content: "One", status: "completed", GSI2PK: "COACH#coach-1#2026-08", GSI2SK: "DATE#2026-08-18#ATHLETE#athlete-1" },
       { PK: "ATHLETE#athlete-2", SK: "SESSION#coach-1#2026-08-19", entityType: "SESSION", athleteId: "athlete-2", coachId: "coach-1", date: "2026-08-19", content: "Two", status: "pending", GSI2PK: "COACH#coach-1#2026-08", GSI2SK: "DATE#2026-08-19#ATHLETE#athlete-2" },
       { PK: "ATHLETE#athlete-3", SK: "SESSION#coach-1#2026-08-20", entityType: "SESSION", athleteId: "athlete-3", coachId: "coach-1", date: "2026-08-20", content: "Three", status: "in_progress", GSI2PK: "COACH#coach-1#2026-08", GSI2SK: "DATE#2026-08-20#ATHLETE#athlete-3" },
       { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-2#2026-08-18", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-2", date: "2026-08-18", content: "Foreign", status: "completed", GSI2PK: "COACH#coach-2#2026-08", GSI2SK: "DATE#2026-08-18#ATHLETE#athlete-1" },
+      { PK: "ATHLETE#athlete-4", SK: "SESSION#coach-1#2026-08-21", entityType: "SESSION", athleteId: "athlete-4", coachId: "coach-1", date: "2026-08-21", content: "Legacy without index" },
     );
     const result = await invoke(db, event("GET", "/coach/calendar", coach, { query: { from: "2026-08-17", to: "2026-08-23" } }));
     assert.equal(result.statusCode, 200);
-    assert.equal(result.json.items.length, 3);
-    assert.deepEqual(result.json.summary, { total: 3, completed: 1, inProgress: 1, skipped: 0, pending: 0, overdue: 1 });
-    assert.equal(db.queryCount, 1);
+    assert.equal(result.json.items.length, 4);
+    assert.equal(result.json.items.find((item: { athleteId: string }) => item.athleteId === "athlete-4").status, "pending");
+    assert.deepEqual(result.json.summary, { total: 4, completed: 1, inProgress: 1, skipped: 0, pending: 1, overdue: 1 });
+    assert.equal(db.queryCount, 2);
   });
 
   it("rejects calendar ranges longer than 31 days and athlete access", async () => {
@@ -455,7 +507,7 @@ describe("PlanUp API handler", () => {
     const result = await invoke(db, event("GET", "/coach/calendar", coach, { query: { from: "2026-08-31", to: "2026-09-06" } }));
     assert.equal(result.statusCode, 200);
     assert.equal(result.json.items.length, 2);
-    assert.equal(db.queryCount, 2);
+    assert.equal(db.queryCount, 3);
   });
 
   it("duplicates an assigned week idempotently without overwriting target sessions", async () => {

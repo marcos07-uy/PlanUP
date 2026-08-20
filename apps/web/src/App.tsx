@@ -15,6 +15,7 @@ import { api } from "./api";
 import { SessionExecutionCard } from "./athlete/SessionExecutionCard";
 import { CoachComplianceCalendar } from "./coach/CoachComplianceCalendar";
 import { GroupManager } from "./coach/GroupManager";
+import { ProgramManager } from "./coach/ProgramManager";
 import {
   confirm,
   confirmPasswordReset,
@@ -26,7 +27,7 @@ import {
   signUp,
 } from "./auth";
 import { demoAthleteProfile, demoAthletes, demoCoachInvitations, demoCoaches, demoCoachSessions, demoProfile, demoSessions } from "./demo";
-import type { Athlete, AthleteGroup, AthleteGroupSummary, Coach, CoachInvitation, CoachSession, CoachSessionSummary, ComplianceSummary, Role, SessionResult, TrainingSession, UserProfile } from "./types";
+import type { Athlete, AthleteGroup, AthleteGroupSummary, Coach, CoachInvitation, CoachSession, CoachSessionSummary, ComplianceSummary, Role, SessionResult, TrainingProgram, TrainingProgramDay, TrainingProgramSummary, TrainingSession, UserProfile } from "./types";
 
 const demoMode = import.meta.env.VITE_DEMO_MODE === "true";
 const demoUserProfile = import.meta.env.VITE_DEMO_ROLE === "athlete" ? demoAthleteProfile : demoProfile;
@@ -248,7 +249,7 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   const [assignmentDate, setAssignmentDate] = useState(today());
   const [notice, setNotice] = useState("");
   const [mobileTeamOpen, setMobileTeamOpen] = useState(false);
-  const [coachView, setCoachView] = useState<"week" | "plannings" | "groups">("week");
+  const [coachView, setCoachView] = useState<"week" | "plannings" | "groups" | "programs">("week");
   const [weekOffset, setWeekOffset] = useState(0);
   const [calendarSessions, setCalendarSessions] = useState<TrainingSession[]>([]);
   const [compliance, setCompliance] = useState<ComplianceSummary>(emptyCompliance);
@@ -262,10 +263,13 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
   const [groups, setGroups] = useState<AthleteGroupSummary[]>([]);
   const [selectedGroup, setSelectedGroup] = useState<AthleteGroup | null>(null);
   const [assignGroupIds, setAssignGroupIds] = useState<string[]>([]);
+  const [programs, setPrograms] = useState<TrainingProgramSummary[]>([]);
+  const [selectedProgram, setSelectedProgram] = useState<TrainingProgram | null>(null);
+  const [programCursor, setProgramCursor] = useState<string | undefined>();
 
   useEffect(() => {
     if (demoMode || profile.role !== "coach") return;
-    Promise.all([api.athletes(token), api.groups(token)]).then(([items, groupItems]) => { setAthletes(items); setSelected(items[0] ?? null); setGroups(groupItems); });
+    Promise.all([api.athletes(token), api.groups(token), api.programs(token)]).then(([items, groupItems, programPage]) => { setAthletes(items); setSelected(items[0] ?? null); setGroups(groupItems); setPrograms(programPage.items); setProgramCursor(programPage.nextCursor); });
   }, [profile.role, token]);
 
   useEffect(() => {
@@ -431,6 +435,17 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
     setNotice("Planificación duplicada"); setTimeout(() => setNotice(""), 2200);
   }
 
+  async function deletePlanning() {
+    if (!selectedCoachSession || !window.confirm(`¿Eliminar la planificación ${selectedCoachSession.title ?? "seleccionada"}? Las sesiones ya asignadas no cambiarán.`)) return;
+    if (!demoMode) await api.deleteCoachSession(token, selectedCoachSession);
+    const remaining = coachSessions.filter((item) => item.id !== selectedCoachSession.id);
+    setCoachSessions(remaining);
+    setSelectedCoachSession(null);
+    setSelectedCoachSessionId(remaining[0]?.id ?? null);
+    setEditingPlanning(false);
+    setNotice("Planificación eliminada; las sesiones asignadas se conservaron"); setTimeout(() => setNotice(""), 2800);
+  }
+
   function toggleAssignment(athleteId: string) {
     setAssignAthleteIds((items) => items.includes(athleteId) ? items.filter((id) => id !== athleteId) : [...items, athleteId]);
   }
@@ -476,6 +491,43 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
     setGroups((items) => items.filter((item) => item.id !== selectedGroup.id)); setSelectedGroup(null);
   }
 
+  async function createProgram(name: string, weeks: number, days: (Pick<TrainingProgramDay, "dayOffset" | "sourcePlanningId" | "sourcePlanningDate"> & { title: string })[]) {
+    const created = demoMode
+      ? { id: crypto.randomUUID(), name, weeks, dayCount: days.length, updatedAt: new Date().toISOString(), days: days.map((day) => ({ ...day, content: demoCoachSessions.find((planning) => planning.id === day.sourcePlanningId)?.content ?? "Planificación demo" })) }
+      : await api.createProgram(token, name, weeks, days);
+    const { days: _days, ...summary } = created;
+    setPrograms((items) => [...items, summary]); setSelectedProgram(created);
+    setNotice("Programa creado"); setTimeout(() => setNotice(""), 2200);
+  }
+
+  async function selectProgram(program: TrainingProgramSummary) {
+    setSelectedProgram(demoMode ? selectedProgram?.id === program.id ? selectedProgram : null : await api.program(token, program.id));
+  }
+
+  async function deleteSelectedProgram() {
+    if (!selectedProgram || !window.confirm(`¿Eliminar el programa ${selectedProgram.name}?`)) return;
+    if (!demoMode) await api.deleteProgram(token, selectedProgram.id);
+    setPrograms((items) => items.filter((item) => item.id !== selectedProgram.id)); setSelectedProgram(null);
+  }
+
+  async function assignProgram(startDate: string, athleteIds: string[], groupIds: string[]) {
+    if (!selectedProgram) return;
+    let assigned = selectedProgram.dayCount * athleteIds.length;
+    let skipped = 0;
+    if (!demoMode) {
+      const result = await api.assignProgram(token, selectedProgram.id, startDate, athleteIds, groupIds, crypto.randomUUID());
+      assigned = result.created + result.unchanged; skipped = result.skipped;
+    }
+    setNotice(`${assigned} ${assigned === 1 ? "sesión asignada" : "sesiones asignadas"}${skipped ? `; ${skipped} sin sobrescribir` : ""}`); setTimeout(() => setNotice(""), 3000);
+  }
+
+  async function loadMorePrograms() {
+    if (!programCursor || demoMode) return;
+    const page = await api.programs(token, programCursor);
+    setPrograms((items) => [...items, ...page.items.filter((next) => !items.some((item) => item.id === next.id))]);
+    setProgramCursor(page.nextCursor);
+  }
+
   async function updateSessionExecution(status: "in_progress" | "completed" | "skipped", result?: SessionResult) {
     if (!session || !activeCoachId) return;
     const updated = demoMode
@@ -505,7 +557,7 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
       } else {
         const result = await api.duplicateWeek(token, sourceFrom, targetFrom, crypto.randomUUID());
         const total = result.created + result.unchanged;
-        setNotice(`${total} sesión${total === 1 ? "" : "es"} copiada${total === 1 ? "" : "s"}${result.skipped ? `; ${result.skipped} sin sobrescribir` : ""}`);
+        setNotice(`${total} ${total === 1 ? "sesión copiada" : "sesiones copiadas"}${result.skipped ? `; ${result.skipped} sin sobrescribir` : ""}`);
         setWeekOffset(Math.round((Date.parse(`${targetFrom}T12:00:00Z`) - Date.parse(`${weekRange(0)[0]}T12:00:00Z`)) / (7 * 86_400_000)));
       }
       setTimeout(() => setNotice(""), 3000);
@@ -521,8 +573,9 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
     <main className={`dashboard ${profile.role}`}>
       {profile.role === "coach" && <aside className={`athletes-panel ${mobileTeamOpen ? "mobile-open" : ""}`}><div className="panel-title"><div><span className="eyebrow">Equipo</span><h2>Atletas</h2></div><button className="icon-button" onClick={addAthlete} aria-label="Agregar atleta"><Plus size={22} weight="bold" /></button></div><div className="athlete-list">{athletes.map((athlete) => <button key={athlete.id} className={selected?.id === athlete.id ? "selected" : ""} onClick={() => { setSelected(athlete); setMobileTeamOpen(false); }}><span className="avatar">{athlete.name.slice(0, 1).toUpperCase()}</span><span><strong>{athlete.name}</strong><small>{athlete.email}</small></span></button>)}</div></aside>}
       <section className="session-panel">
-        {profile.role === "coach" && <nav className="coach-navigation" aria-label="Secciones del entrenador"><button className={coachView === "week" ? "active" : ""} onClick={() => setCoachView("week")}>Semana</button><button className={coachView === "plannings" ? "active" : ""} onClick={() => setCoachView("plannings")}>Planificaciones</button><button className={coachView === "groups" ? "active" : ""} onClick={() => setCoachView("groups")}>Grupos</button></nav>}
+        {profile.role === "coach" && <nav className="coach-navigation" aria-label="Secciones del entrenador"><button className={coachView === "week" ? "active" : ""} onClick={() => setCoachView("week")}>Semana</button><button className={coachView === "plannings" ? "active" : ""} onClick={() => setCoachView("plannings")}>Planificaciones</button><button className={coachView === "programs" ? "active" : ""} onClick={() => setCoachView("programs")}>Programas</button><button className={coachView === "groups" ? "active" : ""} onClick={() => setCoachView("groups")}>Grupos</button></nav>}
         {profile.role === "coach" && coachView === "groups" && <GroupManager groups={groups} selected={selectedGroup} athletes={athletes} onCreate={createGroup} onSelect={selectGroup} onToggle={toggleGroupAthlete} onDelete={deleteSelectedGroup} />}
+        {profile.role === "coach" && coachView === "programs" && <ProgramManager programs={programs} selected={selectedProgram} plannings={coachSessions} athletes={athletes} groups={groups} hasMore={Boolean(programCursor)} onCreate={createProgram} onSelect={selectProgram} onDelete={deleteSelectedProgram} onAssign={assignProgram} onLoadMore={loadMorePrograms} />}
         {profile.role === "athlete" && <div className="athlete-selector coach-selector"><span>Coach</span><select aria-label="Coach seleccionado" value={selectedCoachId} onChange={(event) => setSelectedCoachId(event.target.value)} disabled={!coaches.length}><option value="">{coaches.length ? "Seleccioná un coach" : "Todavía no tenés coaches"}</option>{coaches.map((coachItem) => <option key={coachItem.id} value={coachItem.id}>{coachItem.name}</option>)}</select></div>}
         {profile.role === "athlete" && coachInvitations.length > 0 && <section className="invitation-panel"><div><span className="eyebrow">Solicitudes pendientes</span><h2>Invitaciones de coaches</h2></div>{coachInvitations.map((invitation) => <article key={invitation.coach.id}><div><strong>{invitation.coach.name}</strong><small>{invitation.coach.email}</small></div><div><button className="secondary compact" onClick={() => answerInvitation(invitation, "reject")}>Rechazar</button><button className="primary compact" onClick={() => answerInvitation(invitation, "accept")}>Aceptar</button></div></article>)}</section>}
         {profile.role === "athlete" && <div className="date-strip">{Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setDate(date.getDate() + index - 2); const value = date.toISOString().slice(0, 10); const planned = visibleSessions.find((item) => item.date === value); return <button key={value} className={selectedDate === value ? "active" : ""} onClick={() => setSelectedDate(value)}><span>{new Intl.DateTimeFormat("es", { weekday: "short" }).format(date)}</span><strong>{date.getDate()}</strong>{planned?.status === "completed" ? <CheckCircle className="session-state completed" size={13} weight="fill" /> : <Circle className={`session-state ${planned?.status ?? "empty"}`} size={planned ? 10 : 7} weight={planned?.status === "in_progress" ? "fill" : "regular"} />}</button>; })}</div>}
@@ -535,11 +588,11 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
           <div className="coach-session-grid">{planningLibrary.length ? planningLibrary.map((item) => <button key={item.id} className={selectedCoachSummary?.id === item.id ? "selected" : ""} onClick={() => { setSelectedCoachSessionId(item.id); setSelectedCoachSession(null); setAssignAthleteIds([]); setEditingPlanning(false); }}><strong>{item.title ?? "Planificación"}</strong><small>Creada {new Intl.DateTimeFormat("es-UY", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${item.date}T12:00:00`))}</small><span className="planning-card-preview" role="tooltip">{item.summary}</span></button>) : <p>{appliedPlanningSearch ? "No encontramos planificaciones con ese nombre." : "Todavía no creaste planificaciones."}</p>}</div>
           {planningCursor && <button className="secondary compact load-more" disabled={loadingPlans} onClick={loadMorePlans}>{loadingPlans ? "Cargando…" : "Cargar más planificaciones"}</button>}
           {selectedCoachSummary && !selectedCoachSession && <div className="planning-detail planning-loading">Cargando planificación…</div>}
-          {selectedCoachSession && <div className="planning-detail"><div className="planning-detail-heading"><div><span className="eyebrow">Vista previa</span><h3>{selectedCoachSession.title ?? "Planificación"}</h3></div><div><button className="secondary compact" onClick={beginPlanningEdit}>Editar</button><button className="secondary compact" onClick={duplicatePlanning}>Duplicar</button></div></div>{editingPlanning ? <div className="coach-session-editor planning-edit"><input aria-label="Editar nombre de la planificación" maxLength={120} value={editPlanningTitle} onChange={(event) => setEditPlanningTitle(event.target.value)} /><textarea aria-label="Editar contenido de la planificación" value={editPlanningContent} onChange={(event) => setEditPlanningContent(event.target.value)} /><div><button className="primary compact" onClick={savePlanningEdit}>Guardar cambios</button><button className="secondary compact" onClick={() => setEditingPlanning(false)}>Cancelar</button></div></div> : <WorkoutContent content={selectedCoachSession.content} />}</div>}
+          {selectedCoachSession && <div className="planning-detail"><div className="planning-detail-heading"><div><span className="eyebrow">Vista previa</span><h3>{selectedCoachSession.title ?? "Planificación"}</h3></div><div><button className="secondary compact" onClick={beginPlanningEdit}>Editar</button><button className="secondary compact" onClick={duplicatePlanning}>Duplicar</button><button className="danger compact" onClick={deletePlanning}>Eliminar</button></div></div>{editingPlanning ? <div className="coach-session-editor planning-edit"><input aria-label="Editar nombre de la planificación" maxLength={120} value={editPlanningTitle} onChange={(event) => setEditPlanningTitle(event.target.value)} /><textarea aria-label="Editar contenido de la planificación" value={editPlanningContent} onChange={(event) => setEditPlanningContent(event.target.value)} /><div><button className="primary compact" onClick={savePlanningEdit}>Guardar cambios</button><button className="secondary compact" onClick={() => setEditingPlanning(false)}>Cancelar</button></div></div> : <WorkoutContent content={selectedCoachSession.content} />}</div>}
           {selectedCoachSummary && selectedCoachSession && athletes.length > 0 && <div className="assign-panel">
             <label className="assignment-date">Día de asignación<input type="date" value={assignmentDate} onChange={(event) => setAssignmentDate(event.target.value)} required /></label>
-            <div className="assign-heading"><strong>Atletas</strong><button type="button" className="text-button" onClick={() => setAssignAthleteIds(assignAthleteIds.length === athletes.length ? [] : athletes.map((athlete) => athlete.id))}>{assignAthleteIds.length === athletes.length ? "Limpiar" : "Seleccionar todos"}</button></div>
             {groups.length > 0 && <><div className="assign-heading"><strong>Grupos</strong></div><div className="assign-list">{groups.map((group) => <label key={group.id}><input type="checkbox" checked={assignGroupIds.includes(group.id)} onChange={() => setAssignGroupIds((items) => items.includes(group.id) ? items.filter((id) => id !== group.id) : [...items, group.id])} />{group.name}</label>)}</div></>}
+            <div className="assign-heading"><strong>Atletas</strong><button type="button" className="text-button" onClick={() => setAssignAthleteIds(assignAthleteIds.length === athletes.length ? [] : athletes.map((athlete) => athlete.id))}>{assignAthleteIds.length === athletes.length ? "Limpiar" : "Seleccionar todos"}</button></div>
             <div className="assign-list">{athletes.map((athlete) => <label key={athlete.id}><input type="checkbox" checked={assignAthleteIds.includes(athlete.id)} onChange={() => toggleAssignment(athlete.id)} />{athlete.name}</label>)}</div>
             <button className="primary compact" disabled={(!assignAthleteIds.length && !assignGroupIds.length) || !assignmentDate} onClick={assignCoachSession}>Asignar planificación</button>
           </div>}

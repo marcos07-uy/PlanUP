@@ -27,6 +27,8 @@ try {
   await page.getByRole("button", { name: "Planificaciones" }).click();
   await page.getByRole("heading", { name: "Planificaciones" }).waitFor();
   await page.getByLabel("CrossFit avanzados").check();
+  const headings = await page.locator(".assign-panel .assign-heading strong").allTextContents();
+  if (headings.join(",") !== "Grupos,Atletas") throw new Error(`Assignment sections are out of order: ${headings.join(",")}`);
   await page.getByRole("button", { name: "Asignar planificación" }).waitFor();
 
   console.log("Coach groups verification passed: create group, multi-membership selection, and assignment target.");

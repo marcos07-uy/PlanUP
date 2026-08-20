@@ -1,4 +1,4 @@
-import type { Athlete, AthleteGroup, AthleteGroupSummary, Coach, CoachCalendarPage, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, SessionResult, TrainingSession, UserProfile } from "./types";
+import type { Athlete, AthleteGroup, AthleteGroupSummary, Coach, CoachCalendarPage, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, SessionResult, TrainingProgram, TrainingProgramDay, TrainingProgramPage, TrainingSession, UserProfile } from "./types";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -38,6 +38,7 @@ export const api = {
     request<CoachSession>("/coach-sessions", token, { method: "POST", body: JSON.stringify({ date, title, content }) }),
   updateCoachSession: (token: string, session: CoachSession, title: string, content: string) =>
     request<CoachSession>(`/coach-sessions/${session.date}/${session.id}`, token, { method: "PUT", body: JSON.stringify({ title, content, expectedVersion: session.version }) }),
+  deleteCoachSession: (token: string, session: CoachSessionSummary) => request<void>(`/coach-sessions/${session.date}/${session.id}`, token, { method: "DELETE" }),
   duplicateCoachSession: (token: string, session: CoachSession, operationId: string, date: string) =>
     request<CoachSession>(`/coach-sessions/${session.date}/${session.id}/duplicate`, token, { method: "POST", body: JSON.stringify({ operationId, date }) }),
   assignCoachSession: (token: string, session: CoachSessionSummary, date: string, athleteIds: string[], groupIds: string[] = [], replacePending = false) =>
@@ -65,4 +66,11 @@ export const api = {
   addGroupAthlete: (token: string, groupId: string, athleteId: string) => request<Athlete>(`/groups/${groupId}/athletes/${athleteId}`, token, { method: "PUT" }),
   removeGroupAthlete: (token: string, groupId: string, athleteId: string) => request<void>(`/groups/${groupId}/athletes/${athleteId}`, token, { method: "DELETE" }),
   deleteGroup: (token: string, groupId: string) => request<void>(`/groups/${groupId}`, token, { method: "DELETE" }),
+  programs: (token: string, cursor?: string) => request<TrainingProgramPage>(`/programs?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, token),
+  program: (token: string, programId: string) => request<TrainingProgram>(`/programs/${programId}`, token),
+  createProgram: (token: string, name: string, weeks: number, days: Pick<TrainingProgramDay, "dayOffset" | "sourcePlanningId" | "sourcePlanningDate">[]) =>
+    request<TrainingProgram>("/programs", token, { method: "POST", body: JSON.stringify({ name, weeks, days }) }),
+  deleteProgram: (token: string, programId: string) => request<void>(`/programs/${programId}`, token, { method: "DELETE" }),
+  assignProgram: (token: string, programId: string, startDate: string, athleteIds: string[], groupIds: string[], operationId: string) =>
+    request<{ created: number; unchanged: number; skipped: number; conflicts: { athleteId: string; date: string; reason: string }[] }>(`/programs/${programId}/assign`, token, { method: "POST", body: JSON.stringify({ startDate, athleteIds, groupIds, operationId }) }),
 };

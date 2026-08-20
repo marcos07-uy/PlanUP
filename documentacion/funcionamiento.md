@@ -78,11 +78,13 @@ La interfaz responde de forma genérica al solicitar el código para no revelar 
 
 El atleta puede marcar la sesión como iniciada, completada u omitida desde una interfaz adaptada al celular. Al completarla puede agregar opcionalmente hasta cinco resultados simples —peso, repeticiones, tiempo, distancia o nota—, RPE y un comentario. Sólo el atleta puede crear o corregir estos datos.
 
-El entrenador abre inicialmente una vista semanal que reúne las sesiones de todos sus atletas. La vista distingue completadas, en curso, pendientes, vencidas y omitidas, y muestra RPE cuando existe. La API consulta un índice mensual por entrenador: una semana usa una consulta DynamoDB, o dos cuando cruza de mes, sin hacer una petición independiente por atleta. Las sesiones anteriores a esta funcionalidad siguen disponibles para el atleta, pero no aparecen en cumplimiento hasta ser reasignadas.
+El entrenador abre inicialmente una agenda semanal que reúne las sesiones de todos sus atletas. La vista distingue completadas, en curso, pendientes, vencidas y omitidas, y muestra RPE cuando existe. Los contadores sólo aparecen cuando la semana contiene sesiones. La API consulta un índice mensual por entrenador: una semana usa una consulta DynamoDB, o dos cuando cruza de mes. Para compatibilidad, en rangos de hasta siete días también recupera en un único `BatchGetItem` las sesiones antiguas sin índice; no hace una petición independiente por atleta.
 
 Desde esa vista puede duplicar una semana hacia otro lunes. Se copian las sesiones materializadas para los mismos atletas, conservando el contenido pero reiniciando ejecución, resultados y estado a `pending`. Las sesiones existentes en el destino no se sobrescriben. Un `operationId` hace seguro el reintento y la operación se limita a 200 sesiones.
 
 En **Grupos**, el entrenador crea conjuntos reutilizables y selecciona sus miembros. Un atleta puede pertenecer a varios grupos. Al asignar una planificación puede combinar grupos y atletas individuales; la API elimina duplicados y materializa una sola sesión por atleta. Los cambios futuros del grupo no modifican sesiones ya asignadas.
+
+En **Programas**, el entrenador combina planificaciones existentes en días relativos de un ciclo de 1 a 12 semanas. Cada día toma una instantánea del título y contenido al crear el programa. Al asignarlo se elige un lunes inicial y atletas, grupos o ambos; la API materializa las sesiones concretas, elimina atletas repetidos y nunca sobrescribe una sesión existente. El límite es 60 días por programa y 500 sesiones por asignación. Los reintentos usan `operationId`.
 
 El contenido reconoce encabezados `CALENTAMIENTO`, `FUERZA` y `WOD` para presentarlos como bloques visuales. La base de datos conserva el texto completo, por lo que no depende de esa estructura.
 
@@ -102,6 +104,7 @@ Todos requieren un JWT de Cognito.
 | `GET` | `/coach-sessions?limit=&cursor=` | Entrenador | Lista resúmenes paginados; devuelve un cursor opaco cuando hay otra página. |
 | `GET` | `/coach-sessions/{date}/{id}` | Entrenador | Obtiene el contenido completo de una planificación. |
 | `PUT` | `/coach-sessions/{date}/{id}` | Entrenador | Edita título y contenido con control optimista de versión. |
+| `DELETE` | `/coach-sessions/{date}/{id}` | Entrenador | Elimina la planificación de la biblioteca; no borra sesiones ya asignadas. |
 | `POST` | `/coach-sessions/{date}/{id}/duplicate` | Entrenador | Crea una copia independiente de forma idempotente. |
 | `POST` | `/coach-sessions` | Entrenador | Crea una planificación reutilizable. |
 | `POST` | `/coach-sessions/{date}/{id}/assign` | Entrenador | Asigna una planificación a varios atletas. |
@@ -112,6 +115,9 @@ Todos requieren un JWT de Cognito.
 | `GET/POST` | `/groups` | Entrenador | Lista o crea grupos. |
 | `GET/DELETE` | `/groups/{groupId}` | Entrenador | Obtiene el grupo con sus miembros o lo elimina. |
 | `PUT/DELETE` | `/groups/{groupId}/athletes/{athleteId}` | Entrenador | Agrega o elimina una membresía bidireccional. |
+| `GET/POST` | `/programs` | Entrenador | Lista programas paginados o crea uno con días relativos. |
+| `GET/DELETE` | `/programs/{programId}` | Entrenador | Obtiene el programa completo o elimina su plantilla. |
+| `POST` | `/programs/{programId}/assign` | Entrenador | Materializa el programa para atletas y grupos desde un lunes. |
 
 ## Autorización
 

@@ -35,6 +35,31 @@ export interface AthleteGroup extends AthleteGroupSummary {
   athletes: Athlete[];
 }
 
+export interface TrainingProgramDay {
+  dayOffset: number;
+  title: string;
+  content: string;
+  sourcePlanningId: string;
+  sourcePlanningDate: string;
+}
+
+export interface TrainingProgramSummary {
+  id: string;
+  name: string;
+  weeks: number;
+  dayCount: number;
+  updatedAt: string;
+}
+
+export interface TrainingProgram extends TrainingProgramSummary {
+  days: TrainingProgramDay[];
+}
+
+export interface TrainingProgramPage {
+  items: TrainingProgramSummary[];
+  nextCursor?: string;
+}
+
 export interface TrainingSession {
   athleteId: string;
   coachId: string;
