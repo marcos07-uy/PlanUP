@@ -49,6 +49,9 @@ try {
   await page.getByRole("heading", { name: "Velocidad editada (copia)" }).waitFor();
 
   await page.getByLabel("Día de asignación").fill("2026-08-27");
+  const assignmentPanel = page.locator(".assign-panel");
+  const headings = await assignmentPanel.locator(".assign-heading strong").allTextContents();
+  if (headings.at(-1) !== "Atletas") throw new Error("Athlete heading is not placed directly before the athlete list");
   await page.getByRole("button", { name: "Seleccionar todos" }).click();
   await page.getByRole("button", { name: "Asignar planificación" }).click();
 

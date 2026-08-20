@@ -84,6 +84,8 @@ Desde esa vista puede duplicar una semana hacia otro lunes. Se copian las sesion
 
 En **Grupos**, el entrenador crea conjuntos reutilizables y selecciona sus miembros. Un atleta puede pertenecer a varios grupos. Al asignar una planificación puede combinar grupos y atletas individuales; la API elimina duplicados y materializa una sola sesión por atleta. Los cambios futuros del grupo no modifican sesiones ya asignadas.
 
+En **Programas**, el entrenador combina planificaciones existentes en días relativos de un ciclo de 1 a 12 semanas. Cada día toma una instantánea del título y contenido al crear el programa. Al asignarlo se elige un lunes inicial y atletas, grupos o ambos; la API materializa las sesiones concretas, elimina atletas repetidos y nunca sobrescribe una sesión existente. El límite es 60 días por programa y 500 sesiones por asignación. Los reintentos usan `operationId`.
+
 El contenido reconoce encabezados `CALENTAMIENTO`, `FUERZA` y `WOD` para presentarlos como bloques visuales. La base de datos conserva el texto completo, por lo que no depende de esa estructura.
 
 ## Endpoints
@@ -112,6 +114,9 @@ Todos requieren un JWT de Cognito.
 | `GET/POST` | `/groups` | Entrenador | Lista o crea grupos. |
 | `GET/DELETE` | `/groups/{groupId}` | Entrenador | Obtiene el grupo con sus miembros o lo elimina. |
 | `PUT/DELETE` | `/groups/{groupId}/athletes/{athleteId}` | Entrenador | Agrega o elimina una membresía bidireccional. |
+| `GET/POST` | `/programs` | Entrenador | Lista programas paginados o crea uno con días relativos. |
+| `GET/DELETE` | `/programs/{programId}` | Entrenador | Obtiene el programa completo o elimina su plantilla. |
+| `POST` | `/programs/{programId}/assign` | Entrenador | Materializa el programa para atletas y grupos desde un lunes. |
 
 ## Autorización
 

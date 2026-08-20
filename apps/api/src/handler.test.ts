@@ -341,6 +341,35 @@ describe("PlanUp API handler", () => {
     assert.equal(first.json.title, "Original (copia)");
   });
 
+  it("creates and assigns a reusable multi-week program idempotently", async () => {
+    db.seed(
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-2", entityType: "COACH_ATHLETE", athleteId: "athlete-2" },
+      { PK: "COACH#coach-1", SK: "GROUP#group-1", entityType: "GROUP", id: "group-1", name: "Team" },
+      { PK: "GROUP#coach-1#group-1", SK: "ATHLETE#athlete-2", entityType: "GROUP_MEMBERSHIP", athleteId: "athlete-2" },
+      { PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-01#plan-1", entityType: "COACH_SESSION", id: "plan-1", title: "Strength", date: "2026-08-01", content: "Squat" },
+      { PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-02#plan-2", entityType: "COACH_SESSION", id: "plan-2", title: "Conditioning", date: "2026-08-02", content: "Run" },
+    );
+    const created = await invoke(db, event("POST", "/programs", coach, { body: { name: "Base 2 weeks", weeks: 2, days: [
+      { dayOffset: 0, sourcePlanningId: "plan-1", sourcePlanningDate: "2026-08-01" },
+      { dayOffset: 9, sourcePlanningId: "plan-2", sourcePlanningDate: "2026-08-02" },
+    ] } }));
+    assert.equal(created.statusCode, 201);
+    assert.equal(created.json.dayCount, 2);
+    const listed = await invoke(db, event("GET", "/programs", coach, { query: { limit: "20" } }));
+    assert.equal(listed.json.items[0].name, "Base 2 weeks");
+
+    const body = { startDate: "2026-08-24", athleteIds: ["athlete-1"], groupIds: ["group-1"], operationId: "22222222-2222-4222-8222-222222222222" };
+    const first = await invoke(db, event("POST", `/programs/${created.json.id}/assign`, coach, { body }));
+    const retry = await invoke(db, event("POST", `/programs/${created.json.id}/assign`, coach, { body }));
+    assert.deepEqual({ created: first.json.created, unchanged: first.json.unchanged, skipped: first.json.skipped }, { created: 4, unchanged: 0, skipped: 0 });
+    assert.deepEqual({ created: retry.json.created, unchanged: retry.json.unchanged, skipped: retry.json.skipped }, { created: 0, unchanged: 4, skipped: 0 });
+    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-24")?.content, "Squat");
+    assert.equal(db.get("ATHLETE#athlete-2", "SESSION#coach-1#2026-09-02")?.content, "Run");
+    const detail = await invoke(db, event("GET", `/programs/${created.json.id}`, coach));
+    assert.deepEqual(detail.json.days.map((day: { dayOffset: number }) => day.dayOffset), [0, 9]);
+  });
+
   it("assigns one coach planning to multiple linked athletes on a selected date", async () => {
     db.seed(
       { PK: "COACH#coach-1", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },

@@ -1,4 +1,4 @@
-import type { Athlete, AthleteGroup, AthleteGroupSummary, Coach, CoachCalendarPage, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, SessionResult, TrainingSession, UserProfile } from "./types";
+import type { Athlete, AthleteGroup, AthleteGroupSummary, Coach, CoachCalendarPage, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, SessionResult, TrainingProgram, TrainingProgramDay, TrainingProgramPage, TrainingSession, UserProfile } from "./types";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -65,4 +65,11 @@ export const api = {
   addGroupAthlete: (token: string, groupId: string, athleteId: string) => request<Athlete>(`/groups/${groupId}/athletes/${athleteId}`, token, { method: "PUT" }),
   removeGroupAthlete: (token: string, groupId: string, athleteId: string) => request<void>(`/groups/${groupId}/athletes/${athleteId}`, token, { method: "DELETE" }),
   deleteGroup: (token: string, groupId: string) => request<void>(`/groups/${groupId}`, token, { method: "DELETE" }),
+  programs: (token: string, cursor?: string) => request<TrainingProgramPage>(`/programs?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, token),
+  program: (token: string, programId: string) => request<TrainingProgram>(`/programs/${programId}`, token),
+  createProgram: (token: string, name: string, weeks: number, days: Pick<TrainingProgramDay, "dayOffset" | "sourcePlanningId" | "sourcePlanningDate">[]) =>
+    request<TrainingProgram>("/programs", token, { method: "POST", body: JSON.stringify({ name, weeks, days }) }),
+  deleteProgram: (token: string, programId: string) => request<void>(`/programs/${programId}`, token, { method: "DELETE" }),
+  assignProgram: (token: string, programId: string, startDate: string, athleteIds: string[], groupIds: string[], operationId: string) =>
+    request<{ created: number; unchanged: number; skipped: number; conflicts: { athleteId: string; date: string; reason: string }[] }>(`/programs/${programId}/assign`, token, { method: "POST", body: JSON.stringify({ startDate, athleteIds, groupIds, operationId }) }),
 };

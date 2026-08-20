@@ -226,6 +226,12 @@ function assertGroupName(value: string | undefined) {
   return name;
 }
 
+function assertProgramName(value: string | undefined) {
+  const name = value?.trim();
+  if (!name || name.length > 120) throw Object.assign(new Error("Program name must contain between 1 and 120 characters"), { statusCode: 400 });
+  return name;
+}
+
 function planningSummary(content: string) {
   const summary = content.replace(/^==\s*/gm, "").replace(/\s+/g, " ").trim();
   return summary.length > 180 ? `${summary.slice(0, 177)}…` : summary;
@@ -382,6 +388,104 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         await database.send(new TransactWriteCommand({ TransactItems: [{ Delete: { TableName: tableName, Key: key } }, ...(members.Items ?? []).flatMap((item) => [{ Delete: { TableName: tableName, Key: { PK: item.PK, SK: item.SK } } }, { Delete: { TableName: tableName, Key: { PK: `ATHLETE#${item.athleteId}`, SK: `GROUP#${identity.id}#${groupId}` } } }])] }));
         return { statusCode: 204 };
       }
+    }
+
+    if (path === "/programs" && method === "GET") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can manage programs" });
+      const requestedLimit = Number(event.queryStringParameters?.limit ?? 20);
+      const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 50) : 20;
+      const cursor = decodeCursor(event.queryStringParameters?.cursor);
+      if (cursor && cursor.PK !== `COACH#${identity.id}`) return response(400, { message: "Invalid program cursor" });
+      const result = await database.send(new QueryCommand({ TableName: tableName, KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to", ExpressionAttributeValues: { ":pk": `COACH#${identity.id}`, ":from": "PROGRAM#", ":to": "PROGRAM#~" }, ExclusiveStartKey: cursor, Limit: limit }));
+      return response(200, { items: (result.Items ?? []).map((item) => ({ id: item.id, name: item.name, weeks: item.weeks, dayCount: item.dayCount, updatedAt: item.updatedAt })), nextCursor: encodeCursor(result.LastEvaluatedKey) });
+    }
+
+    if (path === "/programs" && method === "POST") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can manage programs" });
+      const body = JSON.parse(event.body ?? "{}") as { name?: string; weeks?: unknown; days?: { dayOffset?: unknown; sourcePlanningId?: unknown; sourcePlanningDate?: unknown }[] };
+      const name = assertProgramName(body.name);
+      if (!Number.isInteger(body.weeks) || Number(body.weeks) < 1 || Number(body.weeks) > 12) return response(400, { message: "Program duration must be between 1 and 12 weeks" });
+      const weeks = Number(body.weeks);
+      if (!Array.isArray(body.days) || !body.days.length || body.days.length > 60) return response(400, { message: "A program must contain between 1 and 60 days" });
+      const offsets = new Set<number>();
+      const days = await Promise.all(body.days.map(async (day) => {
+        const dayOffset = Number(day.dayOffset);
+        if (!Number.isInteger(dayOffset) || dayOffset < 0 || dayOffset >= weeks * 7 || offsets.has(dayOffset)) throw Object.assign(new Error("Program days must be unique and within its duration"), { statusCode: 400 });
+        offsets.add(dayOffset);
+        if (typeof day.sourcePlanningId !== "string" || typeof day.sourcePlanningDate !== "string") throw Object.assign(new Error("Each program day requires a planning"), { statusCode: 400 });
+        assertDate(day.sourcePlanningDate);
+        const planning = await database.send(new GetCommand({ TableName: tableName, Key: { PK: `COACH#${identity.id}`, SK: `COACH_SESSION#${day.sourcePlanningDate}#${day.sourcePlanningId}` } }));
+        if (!planning.Item) throw Object.assign(new Error("Program planning not found"), { statusCode: 404 });
+        return { dayOffset, title: String(planning.Item.title ?? "Planificación"), content: String(planning.Item.content ?? ""), sourcePlanningId: day.sourcePlanningId, sourcePlanningDate: day.sourcePlanningDate };
+      }));
+      const id = randomUUID();
+      const now = new Date().toISOString();
+      const header = { PK: `COACH#${identity.id}`, SK: `PROGRAM#${id}`, entityType: "PROGRAM", id, coachId: identity.id, name, weeks, dayCount: days.length, createdAt: now, updatedAt: now };
+      await database.send(new TransactWriteCommand({ TransactItems: [
+        { Put: { TableName: tableName, Item: header, ConditionExpression: "attribute_not_exists(PK)" } },
+        ...days.map((day) => ({ Put: { TableName: tableName, Item: { PK: `PROGRAM#${identity.id}#${id}`, SK: `DAY#${String(day.dayOffset).padStart(3, "0")}`, entityType: "PROGRAM_DAY", programId: id, coachId: identity.id, ...day, createdAt: now } } })),
+      ] }));
+      return response(201, { id, name, weeks, dayCount: days.length, updatedAt: now, days: days.sort((a, b) => a.dayOffset - b.dayOffset) });
+    }
+
+    const programAssignMatch = path.match(/^\/programs\/([^/]+)\/assign$/);
+    if (programAssignMatch && method === "POST") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can assign programs" });
+      const programId = decodeURIComponent(programAssignMatch[1]);
+      const body = JSON.parse(event.body ?? "{}") as { startDate?: string; athleteIds?: string[]; groupIds?: string[]; operationId?: unknown };
+      assertWeekStart(body.startDate);
+      if (typeof body.operationId !== "string" || !/^[0-9a-f-]{36}$/i.test(body.operationId)) return response(400, { message: "A valid operationId is required" });
+      if ((body.athleteIds !== undefined && (!Array.isArray(body.athleteIds) || body.athleteIds.some((id) => typeof id !== "string"))) || (body.groupIds !== undefined && (!Array.isArray(body.groupIds) || body.groupIds.some((id) => typeof id !== "string")))) return response(400, { message: "Athlete and group IDs must be arrays of strings" });
+      const program = await database.send(new GetCommand({ TableName: tableName, Key: { PK: `COACH#${identity.id}`, SK: `PROGRAM#${programId}` } }));
+      if (!program.Item) return response(404, { message: "Program not found" });
+      const programDays = await database.send(new QueryCommand({ TableName: tableName, KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to", ExpressionAttributeValues: { ":pk": `PROGRAM#${identity.id}#${programId}`, ":from": "DAY#", ":to": "DAY#~" } }));
+      const groupIds = [...new Set(body.groupIds ?? [])].filter(Boolean);
+      const groupedAthleteIds = await Promise.all(groupIds.map(async (groupId) => {
+        const group = await database.send(new GetCommand({ TableName: tableName, Key: { PK: `COACH#${identity.id}`, SK: `GROUP#${groupId}` } }));
+        if (!group.Item) throw Object.assign(new Error("Group not found"), { statusCode: 404 });
+        const members = await database.send(new QueryCommand({ TableName: tableName, KeyConditionExpression: "PK = :pk AND begins_with(SK, :athlete)", ExpressionAttributeValues: { ":pk": `GROUP#${identity.id}#${groupId}`, ":athlete": "ATHLETE#" } }));
+        return (members.Items ?? []).map((item) => String(item.athleteId));
+      }));
+      const athleteIds = [...new Set([...(body.athleteIds ?? []), ...groupedAthleteIds.flat()])].filter(Boolean);
+      if (!athleteIds.length) return response(400, { message: "At least one athlete is required" });
+      const days = programDays.Items ?? [];
+      if (athleteIds.length * days.length > 500) return response(400, { message: "A program assignment can create up to 500 sessions" });
+      await Promise.all(athleteIds.map((athleteId) => assertCoachAccess(database, identity, athleteId)));
+      const operationId = body.operationId.toLowerCase();
+      const updatedAt = new Date().toISOString();
+      const outcomes = await Promise.all(athleteIds.flatMap((athleteId) => days.map(async (day) => {
+        const date = addDays(body.startDate!, Number(day.dayOffset));
+        const key = { PK: `ATHLETE#${athleteId}`, SK: `SESSION#${identity.id}#${date}` };
+        const item = { ...key, entityType: "SESSION", athleteId, coachId: identity.id, date, title: day.title, content: day.content, contentFormat: "text-v1", sourcePlanningId: day.sourcePlanningId, sourcePlanningDate: day.sourcePlanningDate, sourceProgramId: programId, sourceProgramDayOffset: day.dayOffset, programAssignmentOperationId: operationId, status: "pending", executionVersion: 0, GSI2PK: `COACH#${identity.id}#${date.slice(0, 7)}`, GSI2SK: `DATE#${date}#ATHLETE#${athleteId}`, updatedAt };
+        try {
+          await database.send(new PutCommand({ TableName: tableName, Item: item, ConditionExpression: "attribute_not_exists(PK)" }));
+          return { athleteId, date, created: true, unchanged: false, reason: undefined };
+        } catch (error) {
+          if (error instanceof Error && error.name === "ConditionalCheckFailedException") {
+            const concurrent = await database.send(new GetCommand({ TableName: tableName, Key: key }));
+            const unchanged = concurrent.Item?.programAssignmentOperationId === operationId;
+            return { athleteId, date, created: false, unchanged, reason: unchanged ? undefined : "session_exists" };
+          }
+          throw error;
+        }
+      })));
+      const conflicts = outcomes.filter((item) => item.reason).map(({ athleteId, date, reason }) => ({ athleteId, date, reason }));
+      return response(200, { created: outcomes.filter((item) => item.created).length, unchanged: outcomes.filter((item) => item.unchanged).length, skipped: conflicts.length, conflicts });
+    }
+
+    const programMatch = path.match(/^\/programs\/([^/]+)$/);
+    if (programMatch && (method === "GET" || method === "DELETE")) {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can manage programs" });
+      const programId = decodeURIComponent(programMatch[1]);
+      const key = { PK: `COACH#${identity.id}`, SK: `PROGRAM#${programId}` };
+      const program = await database.send(new GetCommand({ TableName: tableName, Key: key }));
+      if (!program.Item) return response(404, { message: "Program not found" });
+      const result = await database.send(new QueryCommand({ TableName: tableName, KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to", ExpressionAttributeValues: { ":pk": `PROGRAM#${identity.id}#${programId}`, ":from": "DAY#", ":to": "DAY#~" } }));
+      if (method === "DELETE") {
+        await database.send(new TransactWriteCommand({ TransactItems: [{ Delete: { TableName: tableName, Key: key } }, ...(result.Items ?? []).map((day) => ({ Delete: { TableName: tableName, Key: { PK: day.PK, SK: day.SK } } }))] }));
+        return { statusCode: 204 };
+      }
+      return response(200, { id: program.Item.id, name: program.Item.name, weeks: program.Item.weeks, dayCount: program.Item.dayCount, updatedAt: program.Item.updatedAt, days: (result.Items ?? []).map((day) => ({ dayOffset: day.dayOffset, title: day.title, content: day.content, sourcePlanningId: day.sourcePlanningId, sourcePlanningDate: day.sourcePlanningDate })) });
     }
 
     if (path === "/athletes" && method === "POST") {

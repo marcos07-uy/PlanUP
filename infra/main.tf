@@ -26,6 +26,11 @@ locals {
     "DELETE /groups/{groupId}",
     "PUT /groups/{groupId}/athletes/{athleteId}",
     "DELETE /groups/{groupId}/athletes/{athleteId}",
+    "GET /programs",
+    "POST /programs",
+    "GET /programs/{programId}",
+    "DELETE /programs/{programId}",
+    "POST /programs/{programId}/assign",
     "GET /athletes/{athleteId}/sessions",
   ])
 }
