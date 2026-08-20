@@ -23,6 +23,12 @@ try {
   page.setDefaultTimeout(10_000);
 
   await page.goto(appUrl);
+  const sessionPanel = page.locator(".session-panel");
+  const panelBox = await sessionPanel.boundingBox();
+  const viewport = page.viewportSize();
+  if (!panelBox || !viewport || Math.abs(panelBox.x + panelBox.width / 2 - viewport.width / 2) > 2) {
+    throw new Error("Athlete session panel is not centered on desktop");
+  }
   const coachSelector = page.getByLabel("Coach seleccionado");
   await coachSelector.waitFor();
   await page.getByRole("heading", { name: "Invitaciones de coaches" }).waitFor();
@@ -36,7 +42,7 @@ try {
   if (await coachSelector.inputValue() !== "coach-3") throw new Error("Accepted coach was not selected");
   await page.getByRole("heading", { name: "Día libre de momento" }).waitFor();
 
-  console.log("Athlete coach verification passed: invitations, selection, and isolated sessions.");
+  console.log("Athlete coach verification passed: centered desktop layout, invitations, selection, and isolated sessions.");
 } finally {
   await browser?.close();
   await server.close();
