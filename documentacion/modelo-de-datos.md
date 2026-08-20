@@ -123,11 +123,13 @@ El estado puede ser `pending`, `in_progress`, `completed` o `skipped`. Una sesi�
   "date": "2026-08-18",
   "content": "==warmup\n...\n\n==wod\n...",
   "summary": "warmup ... wod ...",
+  "normalizedTitle": "fuerza y amrap",
+  "version": 1,
   "updatedAt": "2026-08-18T20:00:00.000Z"
 }
 ```
 
-La fecha identifica cuándo se creó la planificación y forma parte de su clave. No limita su reutilización: al asignarla, la API recibe una fecha de destino independiente. Una sesión pendiente existente sólo se reemplaza después de confirmación; una sesión iniciada, completada u omitida nunca se sobrescribe. El resumen, limitado a 180 caracteres, alimenta las tarjetas sin enviar el contenido completo.
+La fecha identifica cuándo se creó la planificación y forma parte de su clave. No limita su reutilización: al asignarla, la API recibe una fecha de destino independiente. `version` protege ediciones concurrentes y `normalizedTitle` facilita comparaciones de búsqueda. Editar la planificación no modifica las sesiones que ya fueron asignadas. Una sesión pendiente existente sólo se reemplaza después de confirmación; una sesión iniciada, completada u omitida nunca se sobrescribe. El resumen, limitado a 180 caracteres, alimenta las tarjetas sin enviar el contenido completo.
 
 ## Patrones de acceso
 

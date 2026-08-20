@@ -30,12 +30,16 @@ export const api = {
   coachInvitations: (token: string) => request<CoachInvitation[]>("/coach-invitations", token),
   answerCoachInvitation: (token: string, coachId: string, action: "accept" | "reject") =>
     request<Coach | void>(`/coach-invitations/${coachId}/${action}`, token, { method: "POST" }),
-  coachSessions: (token: string, cursor?: string) =>
-    request<CoachSessionPage>(`/coach-sessions?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, token),
+  coachSessions: (token: string, cursor?: string, query = "") =>
+    request<CoachSessionPage>(`/coach-sessions?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}${query ? `&query=${encodeURIComponent(query)}` : ""}`, token),
   coachSession: (token: string, session: CoachSessionSummary) =>
     request<CoachSession>(`/coach-sessions/${session.date}/${session.id}`, token),
   createCoachSession: (token: string, date: string, title: string, content: string) =>
     request<CoachSession>("/coach-sessions", token, { method: "POST", body: JSON.stringify({ date, title, content }) }),
+  updateCoachSession: (token: string, session: CoachSession, title: string, content: string) =>
+    request<CoachSession>(`/coach-sessions/${session.date}/${session.id}`, token, { method: "PUT", body: JSON.stringify({ title, content, expectedVersion: session.version }) }),
+  duplicateCoachSession: (token: string, session: CoachSession, operationId: string, date: string) =>
+    request<CoachSession>(`/coach-sessions/${session.date}/${session.id}/duplicate`, token, { method: "POST", body: JSON.stringify({ operationId, date }) }),
   assignCoachSession: (token: string, session: CoachSessionSummary, date: string, athleteIds: string[], replacePending = false) =>
     request<{ assigned: number; skipped: number; conflicts: { athleteId: string; reason: string }[] }>(`/coach-sessions/${session.date}/${session.id}/assign`, token, {
       method: "POST",

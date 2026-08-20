@@ -13,6 +13,8 @@ locals {
     "POST /coach-invitations/{coachId}/reject",
     "GET /coach-sessions",
     "GET /coach-sessions/{date}/{sessionId}",
+    "PUT /coach-sessions/{date}/{sessionId}",
+    "POST /coach-sessions/{date}/{sessionId}/duplicate",
     "POST /coach-sessions",
     "POST /coach-sessions/{date}/{sessionId}/assign",
     "PUT /me/sessions/{coachId}/{date}/execution",
