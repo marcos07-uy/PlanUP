@@ -180,6 +180,7 @@ function coachSessionFromItem(item: Record<string, unknown>) {
     date: item.date,
     content: item.content,
     summary: item.summary ?? planningSummary(String(item.content ?? "")),
+    version: item.version ?? 0,
     updatedAt: item.updatedAt,
   };
 }
@@ -209,6 +210,10 @@ function assertTitle(value: string | undefined) {
 function planningSummary(content: string) {
   const summary = content.replace(/^==\s*/gm, "").replace(/\s+/g, " ").trim();
   return summary.length > 180 ? `${summary.slice(0, 177)}…` : summary;
+}
+
+function normalizeSearch(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 function encodeCursor(key: Record<string, unknown> | undefined) {
@@ -409,29 +414,41 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       const to = event.queryStringParameters?.to ?? "9999-12-31";
       const requestedLimit = Number(event.queryStringParameters?.limit ?? 20);
       const limit = Number.isInteger(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 50) : 20;
-      const cursor = decodeCursor(event.queryStringParameters?.cursor);
+      let cursor = decodeCursor(event.queryStringParameters?.cursor);
       if (cursor && cursor.PK !== `COACH#${identity.id}`) return response(400, { message: "Invalid planning cursor" });
-      const result = await database.send(new QueryCommand({
-        TableName: tableName,
-        KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to",
-        ExpressionAttributeValues: {
-          ":pk": `COACH#${identity.id}`,
-          ":from": `COACH_SESSION#${from}#`,
-          ":to": `COACH_SESSION#${to}#~`,
-        },
-        ExclusiveStartKey: cursor,
-        Limit: limit,
-        ScanIndexForward: false,
-      }));
+      const rawQuery = event.queryStringParameters?.query?.trim() ?? "";
+      if (rawQuery.length > 80) return response(400, { message: "Planning search cannot exceed 80 characters" });
+      const search = normalizeSearch(rawQuery);
+      const matches: Record<string, unknown>[] = [];
+      let inspected = 0;
+      do {
+        const result = await database.send(new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "PK = :pk AND SK BETWEEN :from AND :to",
+          ExpressionAttributeValues: {
+            ":pk": `COACH#${identity.id}`,
+            ":from": `COACH_SESSION#${from}#`,
+            ":to": `COACH_SESSION#${to}#~`,
+          },
+          ExclusiveStartKey: cursor,
+          Limit: Math.min(limit - matches.length, 250 - inspected),
+          ScanIndexForward: false,
+        }));
+        const page = result.Items ?? [];
+        inspected += page.length;
+        matches.push(...page.filter((item) => !search || normalizeSearch(String(item.title ?? "")).includes(search)));
+        cursor = result.LastEvaluatedKey as { PK: string; SK: string } | undefined;
+      } while (cursor && matches.length < limit && inspected < 250);
       return response(200, {
-        items: (result.Items ?? []).map((item) => ({
+        items: matches.map((item) => ({
           id: item.id,
           title: item.title,
           date: item.date,
           summary: item.summary ?? planningSummary(String(item.content ?? "")),
+          version: item.version ?? 0,
           updatedAt: item.updatedAt,
         })),
-        nextCursor: encodeCursor(result.LastEvaluatedKey),
+        nextCursor: encodeCursor(cursor),
       });
     }
 
@@ -500,6 +517,64 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       return result.Item ? response(200, coachSessionFromItem(result.Item)) : response(404, { message: "Coach session not found" });
     }
 
+    if (coachSessionDetailMatch && method === "PUT") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can edit coach sessions" });
+      const date = decodeURIComponent(coachSessionDetailMatch[1]);
+      const sessionId = decodeURIComponent(coachSessionDetailMatch[2]);
+      assertDate(date);
+      const body = JSON.parse(event.body ?? "{}") as { title?: string; content?: string; expectedVersion?: unknown };
+      const title = assertTitle(body.title);
+      const content = assertContent(body.content);
+      if (!Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 0) return response(400, { message: "expectedVersion must be a non-negative integer" });
+      const current = await database.send(new GetCommand({ TableName: tableName, Key: { PK: `COACH#${identity.id}`, SK: `COACH_SESSION#${date}#${sessionId}` } }));
+      if (!current.Item) return response(404, { message: "Coach session not found" });
+      const version = Number(current.Item.version ?? 0);
+      if (version !== body.expectedVersion) return response(409, { message: "Planning was updated on another device", planning: coachSessionFromItem(current.Item) });
+      const updatedAt = new Date().toISOString();
+      try {
+        await database.send(new UpdateCommand({
+          TableName: tableName,
+          Key: { PK: `COACH#${identity.id}`, SK: `COACH_SESSION#${date}#${sessionId}` },
+          UpdateExpression: "SET #title = :title, content = :content, summary = :summary, normalizedTitle = :normalizedTitle, #version = :nextVersion, updatedAt = :updatedAt",
+          ConditionExpression: "attribute_exists(PK) AND (attribute_not_exists(#version) OR #version = :expectedVersion)",
+          ExpressionAttributeNames: { "#title": "title", "#version": "version" },
+          ExpressionAttributeValues: { ":title": title, ":content": content, ":summary": planningSummary(content), ":normalizedTitle": normalizeSearch(title), ":nextVersion": version + 1, ":updatedAt": updatedAt, ":expectedVersion": version },
+        }));
+      } catch (error) {
+        if (error instanceof Error && error.name === "ConditionalCheckFailedException") return response(409, { message: "Planning was updated on another device" });
+        throw error;
+      }
+      return response(200, coachSessionFromItem({ ...current.Item, title, content, summary: planningSummary(content), normalizedTitle: normalizeSearch(title), version: version + 1, updatedAt }));
+    }
+
+    const coachSessionDuplicateMatch = path.match(/^\/coach-sessions\/([^/]+)\/([^/]+)\/duplicate$/);
+    if (coachSessionDuplicateMatch && method === "POST") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can duplicate coach sessions" });
+      const sourceDate = decodeURIComponent(coachSessionDuplicateMatch[1]);
+      const sourceId = decodeURIComponent(coachSessionDuplicateMatch[2]);
+      assertDate(sourceDate);
+      const body = JSON.parse(event.body ?? "{}") as { title?: string; operationId?: unknown; date?: string };
+      if (typeof body.operationId !== "string" || !/^[0-9a-f-]{36}$/i.test(body.operationId)) return response(400, { message: "A valid operationId is required" });
+      assertDate(body.date);
+      const source = await database.send(new GetCommand({ TableName: tableName, Key: { PK: `COACH#${identity.id}`, SK: `COACH_SESSION#${sourceDate}#${sourceId}` } }));
+      if (!source.Item) return response(404, { message: "Coach session not found" });
+      const title = body.title === undefined ? `${String(source.Item.title ?? "Planificación")} (copia)` : assertTitle(body.title);
+      const date = body.date!;
+      const id = body.operationId.toLowerCase();
+      const key = { PK: `COACH#${identity.id}`, SK: `COACH_SESSION#${date}#${id}` };
+      const item = { ...key, entityType: "COACH_SESSION", id, coachId: identity.id, title, normalizedTitle: normalizeSearch(title), date, content: source.Item.content, summary: source.Item.summary ?? planningSummary(String(source.Item.content ?? "")), version: 1, duplicatedFrom: { date: sourceDate, id: sourceId }, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      try {
+        await database.send(new PutCommand({ TableName: tableName, Item: item, ConditionExpression: "attribute_not_exists(PK)" }));
+      } catch (error) {
+        if (error instanceof Error && error.name === "ConditionalCheckFailedException") {
+          const existing = await database.send(new GetCommand({ TableName: tableName, Key: key }));
+          if (existing.Item?.duplicatedFrom && (existing.Item.duplicatedFrom as { id?: unknown }).id === sourceId) return response(200, coachSessionFromItem(existing.Item));
+        }
+        throw error;
+      }
+      return response(201, coachSessionFromItem(item));
+    }
+
     if (path === "/coach-sessions" && method === "POST") {
       if (identity.role !== "coach") return response(403, { message: "Only coaches can create coach sessions" });
       const body = JSON.parse(event.body ?? "{}") as { date?: string; title?: string; content?: string };
@@ -517,6 +592,9 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         date: body.date,
         content,
         summary: planningSummary(content),
+        normalizedTitle: normalizeSearch(title),
+        version: 1,
+        createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
       await database.send(new PutCommand({ TableName: tableName, Item: item }));

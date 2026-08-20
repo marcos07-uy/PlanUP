@@ -70,10 +70,11 @@ La interfaz responde de forma genérica al solicitar el código para no revelar 
 
 1. La PWA carga las 20 planificaciones más recientes y permite solicitar páginas adicionales con **Cargar más planificaciones**.
 2. El listado transporta solamente nombre, fecha y resumen. Cada tarjeta muestra ese resumen al pasar el cursor o enfocarla; al seleccionarla, la PWA solicita el contenido completo y lo abre debajo de la biblioteca.
-3. Elige una fecha de destino y uno o más atletas vinculados.
-4. La API valida todos los vínculos aceptados y copia la planificación a cada atleta en la fecha elegida.
-5. Si ya existe una sesión pendiente, la PWA pide confirmación antes de reemplazarla. Las sesiones iniciadas, completadas u omitidas se conservan y se informan como conflictos.
-6. Las sesiones de otros coaches permanecen separadas.
+3. Puede buscar por nombre dentro de una cantidad acotada de planificaciones, editar con control de versión o crear una copia independiente. La búsqueda usa `Query`, inspecciona como máximo 250 elementos por llamada y nunca usa `Scan`.
+4. Elige una fecha de destino y uno o más atletas vinculados.
+5. La API valida todos los vínculos aceptados y copia la planificación a cada atleta en la fecha elegida.
+6. Si ya existe una sesión pendiente, la PWA pide confirmación antes de reemplazarla. Las sesiones iniciadas, completadas u omitidas se conservan y se informan como conflictos.
+7. Las sesiones de otros coaches permanecen separadas.
 
 El atleta puede marcar la sesión como iniciada, completada u omitida desde una interfaz adaptada al celular. Al completarla puede agregar opcionalmente hasta cinco resultados simples —peso, repeticiones, tiempo, distancia o nota—, RPE y un comentario. Sólo el atleta puede crear o corregir estos datos.
 
@@ -96,6 +97,8 @@ Todos requieren un JWT de Cognito.
 | `POST` | `/coach-invitations/{coachId}/reject` | Atleta | Rechaza una invitación. |
 | `GET` | `/coach-sessions?limit=&cursor=` | Entrenador | Lista resúmenes paginados; devuelve un cursor opaco cuando hay otra página. |
 | `GET` | `/coach-sessions/{date}/{id}` | Entrenador | Obtiene el contenido completo de una planificación. |
+| `PUT` | `/coach-sessions/{date}/{id}` | Entrenador | Edita título y contenido con control optimista de versión. |
+| `POST` | `/coach-sessions/{date}/{id}/duplicate` | Entrenador | Crea una copia independiente de forma idempotente. |
 | `POST` | `/coach-sessions` | Entrenador | Crea una planificación reutilizable. |
 | `POST` | `/coach-sessions/{date}/{id}/assign` | Entrenador | Asigna una planificación a varios atletas. |
 | `GET` | `/athletes/{id}/sessions?coachId=&from=&to=` | Ambos | Lista sesiones del coach indicado en un rango. |

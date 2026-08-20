@@ -61,7 +61,12 @@ class MemoryDb {
       const current = this.items.get(key);
       const values = input.ExpressionAttributeValues ?? {};
       if (!current || (current.executionVersion !== undefined && current.executionVersion !== values[":expectedVersion"])) {
-        throw Object.assign(new Error("Conditional check failed"), { name: "ConditionalCheckFailedException" });
+        if (!current || input.UpdateExpression?.includes("executionVersion")) throw Object.assign(new Error("Conditional check failed"), { name: "ConditionalCheckFailedException" });
+      }
+      if (input.UpdateExpression?.includes("normalizedTitle")) {
+        if (current.version !== undefined && current.version !== values[":expectedVersion"]) throw Object.assign(new Error("Conditional check failed"), { name: "ConditionalCheckFailedException" });
+        this.items.set(key, structuredClone({ ...current, title: values[":title"], content: values[":content"], summary: values[":summary"], normalizedTitle: values[":normalizedTitle"], version: values[":nextVersion"], updatedAt: values[":updatedAt"] } as Item));
+        return {};
       }
       this.items.set(key, structuredClone({
         ...current,
@@ -278,6 +283,39 @@ describe("PlanUp API handler", () => {
     const foreignCursor = Buffer.from(JSON.stringify({ PK: "COACH#other", SK: "COACH_SESSION#2026-08-03#plan-3" })).toString("base64url");
     const invalid = await invoke(db, event("GET", "/coach-sessions", coach, { query: { cursor: foreignCursor } }));
     assert.equal(invalid.statusCode, 400);
+  });
+
+  it("searches a bounded planning page by normalized title", async () => {
+    db.seed(
+      { PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-03#plan-3", entityType: "COACH_SESSION", id: "plan-3", coachId: "coach-1", title: "Técnica y velocidad", date: "2026-08-03", content: "Drills", updatedAt: "2026-08-03T00:00:00.000Z" },
+      { PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-02#plan-2", entityType: "COACH_SESSION", id: "plan-2", coachId: "coach-1", title: "Fuerza máxima", date: "2026-08-02", content: "Squat", updatedAt: "2026-08-02T00:00:00.000Z" },
+    );
+    const result = await invoke(db, event("GET", "/coach-sessions", coach, { query: { query: "tecnica", limit: "20" } }));
+    assert.deepEqual(result.json.items.map((item: { id: string }) => item.id), ["plan-3"]);
+  });
+
+  it("edits a planning with optimistic concurrency without changing assigned snapshots", async () => {
+    db.seed(
+      { PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-18#base-1", entityType: "COACH_SESSION", id: "base-1", coachId: "coach-1", title: "Original", date: "2026-08-18", content: "Old plan", version: 1, updatedAt: "2026-08-18T00:00:00.000Z" },
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-25", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-25", content: "Old plan", status: "pending" },
+    );
+    const edited = await invoke(db, event("PUT", "/coach-sessions/2026-08-18/base-1", coach, { body: { title: "Updated", content: "New plan", expectedVersion: 1 } }));
+    assert.equal(edited.statusCode, 200);
+    assert.equal(edited.json.version, 2);
+    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-25")?.content, "Old plan");
+    const stale = await invoke(db, event("PUT", "/coach-sessions/2026-08-18/base-1", coach, { body: { title: "Stale", content: "Lost", expectedVersion: 1 } }));
+    assert.equal(stale.statusCode, 409);
+  });
+
+  it("duplicates a planning idempotently", async () => {
+    db.seed({ PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-18#base-1", entityType: "COACH_SESSION", id: "base-1", coachId: "coach-1", title: "Original", date: "2026-08-18", content: "Plan", version: 1 });
+    const body = { operationId: "11111111-1111-4111-8111-111111111111", date: "2026-08-20" };
+    const first = await invoke(db, event("POST", "/coach-sessions/2026-08-18/base-1/duplicate", coach, { body }));
+    const retry = await invoke(db, event("POST", "/coach-sessions/2026-08-18/base-1/duplicate", coach, { body }));
+    assert.equal(first.statusCode, 201);
+    assert.equal(retry.statusCode, 200);
+    assert.equal(first.json.id, retry.json.id);
+    assert.equal(first.json.title, "Original (copia)");
   });
 
   it("assigns one coach planning to multiple linked athletes on a selected date", async () => {

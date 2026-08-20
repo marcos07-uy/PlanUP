@@ -36,6 +36,18 @@ try {
   await page.getByRole("heading", { name: "Velocidad y técnica" }).waitFor();
   await page.getByText("6 x 100 m", { exact: true }).waitFor();
 
+  await page.getByLabel("Buscar planificaciones").fill("Velocidad");
+  await page.getByRole("button", { name: "Buscar" }).click();
+  await page.getByText("Resultados para “Velocidad”").waitFor();
+  await page.getByRole("button", { name: "Editar" }).click();
+  await page.getByLabel("Editar nombre de la planificación").fill("Velocidad editada");
+  await page.getByLabel("Editar contenido de la planificación").fill("==técnica\nDrills\n\n==velocidad\n8 x 100 m");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await page.getByRole("heading", { name: "Velocidad editada" }).waitFor();
+  await page.getByText("8 x 100 m", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Duplicar" }).click();
+  await page.getByRole("heading", { name: "Velocidad editada (copia)" }).waitFor();
+
   await page.getByLabel("Día de asignación").fill("2026-08-27");
   await page.getByRole("button", { name: "Seleccionar todos" }).click();
   await page.getByRole("button", { name: "Asignar a 2 atletas" }).click();

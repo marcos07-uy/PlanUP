@@ -123,7 +123,7 @@ function buildItems(seededGroups) {
     group.plans.forEach(([title, content], index) => {
       const date = isoDay(-index);
       const id = `demo-${group.key}-${String(index + 1).padStart(2, "0")}`;
-      items.push({ PK: `COACH#${coach.id}`, SK: `COACH_SESSION#${date}#${id}`, entityType: "COACH_SESSION", id, coachId: coach.id, title, date, content, summary: summary(content), updatedAt: now, seedId: SEED_ID });
+      items.push({ PK: `COACH#${coach.id}`, SK: `COACH_SESSION#${date}#${id}`, entityType: "COACH_SESSION", id, coachId: coach.id, title, normalizedTitle: title.toLowerCase(), date, content, summary: summary(content), version: 1, createdAt: now, updatedAt: now, seedId: SEED_ID });
     });
     athletes.forEach((athlete, athleteIndex) => group.schedule[athleteIndex].forEach((planIndex, dayOffset) => {
       const [, content] = group.plans[planIndex];

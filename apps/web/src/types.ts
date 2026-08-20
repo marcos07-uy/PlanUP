@@ -74,6 +74,7 @@ export interface CoachSessionSummary {
   title?: string;
   date: string;
   summary: string;
+  version: number;
   updatedAt: string;
 }
 
