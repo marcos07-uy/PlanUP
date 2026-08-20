@@ -27,7 +27,13 @@ La interfaz puede ejecutarse con datos de demostracion usando `VITE_DEMO_MODE=tr
 
 ## Datos demo en AWS DEV
 
-El seed crea dos coaches (`coach.crossfit@example.com` y `coach.gym@example.com`), cuatro atletas por coach, 12 planificaciones por disciplina y 56 sesiones asignadas para una semana. Las cuentas se crean con emails reservados `@example.com`, marcados como verificados y sin enviar mensajes.
+El seed crea dos coaches (`coach.crossfit@example.com` y `coach.gym@example.com`), cuatro atletas por coach, dos grupos y dos programas de cuatro semanas por disciplina, 12 planificaciones por disciplina y 56 sesiones asignadas para una semana. Las cuentas se crean con emails reservados `@example.com`, marcados como verificados y sin enviar mensajes.
+
+Antes de reiniciar los datos se puede auditar cuántos registros pertenecen a las identidades demo y cuántos fueron creados manualmente con esas cuentas:
+
+```bash
+AWS_PROFILE=personal npm run audit:demo
+```
 
 Revise primero el contenido sin modificar AWS:
 
@@ -46,6 +52,8 @@ El comando es idempotente: actualiza las cuentas demo y reemplaza solamente los 
 ```bash
 AWS_PROFILE=personal npm run cleanup:demo
 ```
+
+La limpieza elimina tanto los registros del seed como los grupos, programas, planificaciones y asignaciones creados manualmente por las identidades demo. No elimina datos de usuarios reales.
 
 El script se niega a modificar recursos que no correspondan al pool de `sa-east-1`, la tabla `planup-dev` y la cuenta AWS DEV esperada.
 

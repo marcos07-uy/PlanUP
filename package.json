@@ -12,6 +12,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "seed:demo": "node scripts/manage-demo-data.mjs seed --confirm-dev",
     "seed:demo:dry-run": "node scripts/manage-demo-data.mjs seed --dry-run",
+    "audit:demo": "node scripts/manage-demo-data.mjs audit",
     "cleanup:demo": "node scripts/manage-demo-data.mjs cleanup --confirm-dev"
   },
   "devDependencies": {

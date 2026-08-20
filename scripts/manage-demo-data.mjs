@@ -19,9 +19,9 @@ const operation = process.argv[2];
 const dryRun = process.argv.includes("--dry-run");
 const confirmedDev = process.argv.includes("--confirm-dev");
 
-if (!["seed", "cleanup"].includes(operation)) throw new Error("Usage: manage-demo-data.mjs <seed|cleanup> [--dry-run|--confirm-dev]");
-if (!dryRun && !confirmedDev) throw new Error("Refusing to modify AWS without --confirm-dev");
-if (!dryRun && (!USER_POOL_ID.startsWith("sa-east-1_") || TABLE_NAME !== "planup-dev")) {
+if (!["seed", "cleanup", "audit"].includes(operation)) throw new Error("Usage: manage-demo-data.mjs <seed|cleanup|audit> [--dry-run|--confirm-dev]");
+if (!["audit"].includes(operation) && !dryRun && !confirmedDev) throw new Error("Refusing to modify AWS without --confirm-dev");
+if (operation !== "audit" && !dryRun && (!USER_POOL_ID.startsWith("sa-east-1_") || TABLE_NAME !== "planup-dev")) {
   throw new Error(`Refusing to modify non-dev resources: ${USER_POOL_ID} / ${TABLE_NAME}`);
 }
 
@@ -76,22 +76,42 @@ async function batchWrite(database, requests) {
   }
 }
 
-async function scanSeedItems(database) {
+async function scanDemoItems(database, userIds = []) {
   const items = [];
   let cursor;
   do {
-    const result = await database.send(new ScanCommand({ TableName: TABLE_NAME, FilterExpression: "seedId = :seedId", ExpressionAttributeValues: { ":seedId": SEED_ID }, ProjectionExpression: "PK, SK", ExclusiveStartKey: cursor }));
-    items.push(...(result.Items ?? []));
+    const result = await database.send(new ScanCommand({ TableName: TABLE_NAME, ProjectionExpression: "PK, SK, seedId", ExclusiveStartKey: cursor }));
+    for (const item of result.Items ?? []) {
+      const keyTokens = [...String(item.PK).split("#"), ...String(item.SK).split("#")];
+      if (item.seedId === SEED_ID || userIds.some((id) => keyTokens.includes(id))) items.push(item);
+    }
     cursor = result.LastEvaluatedKey;
   } while (cursor);
   return items;
 }
 
-async function removeDynamoSeed(database, extraKeys = []) {
-  const items = await scanSeedItems(database);
-  const keys = new Map([...items, ...extraKeys].map(({ PK, SK }) => [`${PK}\u0000${SK}`, { PK, SK }]));
+async function removeDemoItems(database, userIds = []) {
+  const items = await scanDemoItems(database, userIds);
+  const keys = new Map(items.map(({ PK, SK }) => [`${PK}\u0000${SK}`, { PK, SK }]));
   await batchWrite(database, [...keys.values()].map((Key) => ({ DeleteRequest: { Key } })));
   return keys.size;
+}
+
+async function resolveExistingGroups(cognito) {
+  const existingGroups = [];
+  for (const group of groups) {
+    const users = [];
+    for (const user of usersFor(group)) {
+      try {
+        const result = await cognito.send(new AdminGetUserCommand({ UserPoolId: USER_POOL_ID, Username: user.email }));
+        users.push({ ...user, id: attr(result.UserAttributes, "sub") });
+      } catch (error) {
+        if (error?.name !== "UserNotFoundException") throw error;
+      }
+    }
+    existingGroups.push({ ...group, users });
+  }
+  return existingGroups;
 }
 
 async function upsertCognitoUser(cognito, user, password) {
@@ -132,10 +152,26 @@ function buildItems(seededGroups) {
       const id = `demo-${group.key}-${String(index + 1).padStart(2, "0")}`;
       items.push({ PK: `COACH#${coach.id}`, SK: `COACH_SESSION#${date}#${id}`, entityType: "COACH_SESSION", id, coachId: coach.id, title, normalizedTitle: title.toLowerCase(), date, content, summary: summary(content), version: 1, createdAt: now, updatedAt: now, seedId: SEED_ID });
     });
+    const programDefinitions = group.key === "crossfit"
+      ? [["crossfit-base", "Base CrossFit · 4 semanas", [0, 1, 2]], ["crossfit-skills", "Gimnásticos y fuerza · 4 semanas", [3, 8, 6]]]
+      : [["gym-strength", "Fuerza general · 4 semanas", [2, 0, 3]], ["gym-hypertrophy", "Hipertrofia torso-pierna · 4 semanas", [7, 8, 9]]];
+    programDefinitions.forEach(([programId, name, planIndexes]) => {
+      const programDays = Array.from({ length: 4 }, (_, weekIndex) => planIndexes.map((planIndex, dayIndex) => ({
+        dayOffset: weekIndex * 7 + dayIndex * 2,
+        planIndex: (planIndex + weekIndex) % group.plans.length,
+      }))).flat();
+      items.push({ PK: `COACH#${coach.id}`, SK: `PROGRAM#${programId}`, entityType: "PROGRAM", id: programId, coachId: coach.id, name, weeks: 4, dayCount: programDays.length, createdAt: now, updatedAt: now, seedId: SEED_ID });
+      programDays.forEach(({ dayOffset, planIndex }) => {
+        const [title, content] = group.plans[planIndex];
+        const sourcePlanningId = `demo-${group.key}-${String(planIndex + 1).padStart(2, "0")}`;
+        items.push({ PK: `PROGRAM#${coach.id}#${programId}`, SK: `DAY#${String(dayOffset).padStart(3, "0")}`, entityType: "PROGRAM_DAY", programId, coachId: coach.id, dayOffset, title, content, sourcePlanningId, sourcePlanningDate: isoDay(-planIndex), createdAt: now, seedId: SEED_ID });
+      });
+    });
     athletes.forEach((athlete, athleteIndex) => group.schedule[athleteIndex].forEach((planIndex, dayOffset) => {
-      const [, content] = group.plans[planIndex];
+      const [title, content] = group.plans[planIndex];
       const date = isoDay(dayOffset);
-      items.push({ PK: `ATHLETE#${athlete.id}`, SK: `SESSION#${coach.id}#${date}`, entityType: "SESSION", athleteId: athlete.id, coachId: coach.id, date, content, contentFormat: "text-v1", status: "pending", executionVersion: 0, GSI2PK: `COACH#${coach.id}#${date.slice(0, 7)}`, GSI2SK: `DATE#${date}#ATHLETE#${athlete.id}`, updatedAt: now, seedId: SEED_ID });
+      const sourcePlanningId = `demo-${group.key}-${String(planIndex + 1).padStart(2, "0")}`;
+      items.push({ PK: `ATHLETE#${athlete.id}`, SK: `SESSION#${coach.id}#${date}`, entityType: "SESSION", athleteId: athlete.id, coachId: coach.id, date, title, content, contentFormat: "text-v1", sourcePlanningId, sourcePlanningDate: isoDay(-planIndex), status: "pending", executionVersion: 0, GSI2PK: `COACH#${coach.id}#${date.slice(0, 7)}`, GSI2SK: `DATE#${date}#ATHLETE#${athlete.id}`, updatedAt: now, seedId: SEED_ID });
     }));
   }
   return items;
@@ -143,7 +179,7 @@ function buildItems(seededGroups) {
 
 if (dryRun) {
   const users = groups.flatMap(usersFor);
-  console.log(JSON.stringify({ region: REGION, userPoolId: USER_POOL_ID, tableName: TABLE_NAME, users: users.length, coaches: 2, athletes: 8, relations: 16, athleteGroups: 4, plans: 24, assignedSessions: 56, coachEmails: groups.map((group) => group.coach.email) }, null, 2));
+  console.log(JSON.stringify({ region: REGION, userPoolId: USER_POOL_ID, tableName: TABLE_NAME, users: users.length, coaches: 2, athletes: 8, relations: 16, athleteGroups: 4, plans: 24, programs: 4, programDays: 48, assignedSessions: 56, coachEmails: groups.map((group) => group.coach.email) }, null, 2));
   process.exit(0);
 }
 
@@ -153,32 +189,18 @@ const pool = await cognito.send(new DescribeUserPoolCommand({ UserPoolId: USER_P
 const accountId = pool.UserPool?.Arn?.split(":")[4];
 if (accountId !== EXPECTED_ACCOUNT_ID) throw new Error(`Refusing AWS account ${accountId}; expected ${EXPECTED_ACCOUNT_ID}`);
 
+const existingGroups = await resolveExistingGroups(cognito);
+const existingUserIds = existingGroups.flatMap((group) => group.users.map((user) => user.id));
+const existingDemoItems = await scanDemoItems(database, existingUserIds);
+
+if (operation === "audit") {
+  const seededItems = existingDemoItems.filter((item) => item.seedId === SEED_ID).length;
+  console.log(JSON.stringify({ cognitoUsers: existingUserIds.length, dynamoItems: existingDemoItems.length, seededItems, manualItemsOwnedByDemoUsers: existingDemoItems.length - seededItems }, null, 2));
+  process.exit(0);
+}
+
 if (operation === "cleanup") {
-  const existingGroups = [];
-  for (const group of groups) {
-    const users = [];
-    for (const user of usersFor(group)) {
-      try {
-        const result = await cognito.send(new AdminGetUserCommand({ UserPoolId: USER_POOL_ID, Username: user.email }));
-        users.push({ ...user, id: attr(result.UserAttributes, "sub") });
-      } catch (error) {
-        if (error?.name !== "UserNotFoundException") throw error;
-      }
-    }
-    existingGroups.push({ ...group, users });
-  }
-  const stableKeys = existingGroups.flatMap((group) => {
-    const coach = group.users.find((user) => user.role === "coach");
-    const athletes = group.users.filter((user) => user.role === "athlete");
-    return [
-      ...group.users.map((user) => ({ PK: `USER#${user.id}`, SK: "PROFILE" })),
-      ...(coach ? athletes.flatMap((athlete) => [
-        { PK: `COACH#${coach.id}`, SK: `ATHLETE#${athlete.id}` },
-        { PK: `ATHLETE#${athlete.id}`, SK: `COACH#${coach.id}` },
-      ]) : []),
-    ];
-  });
-  const deletedItems = await removeDynamoSeed(database, stableKeys);
+  const deletedItems = await removeDemoItems(database, existingUserIds);
   let deletedUsers = 0;
   for (const user of groups.flatMap(usersFor)) {
     try { await cognito.send(new AdminDeleteUserCommand({ UserPoolId: USER_POOL_ID, Username: user.email })); deletedUsers += 1; }
@@ -197,8 +219,9 @@ for (const group of groups) {
   for (const user of usersFor(group)) users.push(await upsertCognitoUser(cognito, user, password));
   seededGroups.push({ ...group, users });
 }
-const deletedItems = await removeDynamoSeed(database);
+const seededUserIds = seededGroups.flatMap((group) => group.users.map((user) => user.id));
+const deletedItems = await removeDemoItems(database, [...new Set([...existingUserIds, ...seededUserIds])]);
 const items = buildItems(seededGroups);
 await batchWrite(database, items.map((Item) => ({ PutRequest: { Item } })));
-console.log(`Demo seed complete: 10 users, 24 plans, 56 assigned sessions, ${items.length} DynamoDB items (${deletedItems} previous seed items replaced).`);
+console.log(`Demo seed complete: 10 users, 24 plans, 4 programs, 48 program days, 56 assigned sessions, ${items.length} DynamoDB items (${deletedItems} previous demo items replaced).`);
 console.log(`Coach logins: ${groups.map((group) => group.coach.email).join(", ")}`);
