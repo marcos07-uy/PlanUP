@@ -18,7 +18,7 @@ try {
   await page.goto(appUrl);
 
   await page.getByRole("heading", { name: /—/ }).waitFor();
-  await page.getByText("Cumplimiento semanal").waitFor();
+  await page.getByText("Agenda semanal").waitFor();
   await page.getByText("Completadas", { exact: true }).waitFor();
   await page.getByText("Pendientes", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Duplicar semana" }).click();
@@ -26,12 +26,14 @@ try {
   await page.getByRole("button", { name: "Confirmar copia" }).click();
   await page.getByText("Semana duplicada en modo demostración").waitFor();
   await page.getByRole("button", { name: "Semana siguiente" }).click();
+  await page.getByText("No hay sesiones esta semana.").waitFor();
+  if (await page.locator(".compliance-summary").count()) throw new Error("Empty weekly agenda still shows zero counters");
   await page.getByRole("button", { name: "Planificaciones" }).click();
   await page.getByRole("heading", { name: "Planificaciones" }).waitFor();
   await page.getByRole("button", { name: "Semana" }).click();
-  await page.getByText("Cumplimiento semanal").waitFor();
+  await page.getByText("Agenda semanal").waitFor();
 
-  console.log("Coach compliance verification passed: weekly summary, week duplication, navigation, and planning switch.");
+  console.log("Coach agenda verification passed: legacy-compatible sessions, empty state, week duplication, and navigation.");
 } finally {
   await browser?.close();
   await server.close();

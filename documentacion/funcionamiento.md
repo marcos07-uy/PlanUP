@@ -78,7 +78,7 @@ La interfaz responde de forma genérica al solicitar el código para no revelar 
 
 El atleta puede marcar la sesión como iniciada, completada u omitida desde una interfaz adaptada al celular. Al completarla puede agregar opcionalmente hasta cinco resultados simples —peso, repeticiones, tiempo, distancia o nota—, RPE y un comentario. Sólo el atleta puede crear o corregir estos datos.
 
-El entrenador abre inicialmente una vista semanal que reúne las sesiones de todos sus atletas. La vista distingue completadas, en curso, pendientes, vencidas y omitidas, y muestra RPE cuando existe. La API consulta un índice mensual por entrenador: una semana usa una consulta DynamoDB, o dos cuando cruza de mes, sin hacer una petición independiente por atleta. Las sesiones anteriores a esta funcionalidad siguen disponibles para el atleta, pero no aparecen en cumplimiento hasta ser reasignadas.
+El entrenador abre inicialmente una agenda semanal que reúne las sesiones de todos sus atletas. La vista distingue completadas, en curso, pendientes, vencidas y omitidas, y muestra RPE cuando existe. Los contadores sólo aparecen cuando la semana contiene sesiones. La API consulta un índice mensual por entrenador: una semana usa una consulta DynamoDB, o dos cuando cruza de mes. Para compatibilidad, en rangos de hasta siete días también recupera en un único `BatchGetItem` las sesiones antiguas sin índice; no hace una petición independiente por atleta.
 
 Desde esa vista puede duplicar una semana hacia otro lunes. Se copian las sesiones materializadas para los mismos atletas, conservando el contenido pero reiniciando ejecución, resultados y estado a `pending`. Las sesiones existentes en el destino no se sobrescriben. Un `operationId` hace seguro el reintento y la operación se limita a 200 sesiones.
 
@@ -104,6 +104,7 @@ Todos requieren un JWT de Cognito.
 | `GET` | `/coach-sessions?limit=&cursor=` | Entrenador | Lista resúmenes paginados; devuelve un cursor opaco cuando hay otra página. |
 | `GET` | `/coach-sessions/{date}/{id}` | Entrenador | Obtiene el contenido completo de una planificación. |
 | `PUT` | `/coach-sessions/{date}/{id}` | Entrenador | Edita título y contenido con control optimista de versión. |
+| `DELETE` | `/coach-sessions/{date}/{id}` | Entrenador | Elimina la planificación de la biblioteca; no borra sesiones ya asignadas. |
 | `POST` | `/coach-sessions/{date}/{id}/duplicate` | Entrenador | Crea una copia independiente de forma idempotente. |
 | `POST` | `/coach-sessions` | Entrenador | Crea una planificación reutilizable. |
 | `POST` | `/coach-sessions/{date}/{id}/assign` | Entrenador | Asigna una planificación a varios atletas. |

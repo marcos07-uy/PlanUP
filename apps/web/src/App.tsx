@@ -435,6 +435,17 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
     setNotice("Planificación duplicada"); setTimeout(() => setNotice(""), 2200);
   }
 
+  async function deletePlanning() {
+    if (!selectedCoachSession || !window.confirm(`¿Eliminar la planificación ${selectedCoachSession.title ?? "seleccionada"}? Las sesiones ya asignadas no cambiarán.`)) return;
+    if (!demoMode) await api.deleteCoachSession(token, selectedCoachSession);
+    const remaining = coachSessions.filter((item) => item.id !== selectedCoachSession.id);
+    setCoachSessions(remaining);
+    setSelectedCoachSession(null);
+    setSelectedCoachSessionId(remaining[0]?.id ?? null);
+    setEditingPlanning(false);
+    setNotice("Planificación eliminada; las sesiones asignadas se conservaron"); setTimeout(() => setNotice(""), 2800);
+  }
+
   function toggleAssignment(athleteId: string) {
     setAssignAthleteIds((items) => items.includes(athleteId) ? items.filter((id) => id !== athleteId) : [...items, athleteId]);
   }
@@ -577,7 +588,7 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
           <div className="coach-session-grid">{planningLibrary.length ? planningLibrary.map((item) => <button key={item.id} className={selectedCoachSummary?.id === item.id ? "selected" : ""} onClick={() => { setSelectedCoachSessionId(item.id); setSelectedCoachSession(null); setAssignAthleteIds([]); setEditingPlanning(false); }}><strong>{item.title ?? "Planificación"}</strong><small>Creada {new Intl.DateTimeFormat("es-UY", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(`${item.date}T12:00:00`))}</small><span className="planning-card-preview" role="tooltip">{item.summary}</span></button>) : <p>{appliedPlanningSearch ? "No encontramos planificaciones con ese nombre." : "Todavía no creaste planificaciones."}</p>}</div>
           {planningCursor && <button className="secondary compact load-more" disabled={loadingPlans} onClick={loadMorePlans}>{loadingPlans ? "Cargando…" : "Cargar más planificaciones"}</button>}
           {selectedCoachSummary && !selectedCoachSession && <div className="planning-detail planning-loading">Cargando planificación…</div>}
-          {selectedCoachSession && <div className="planning-detail"><div className="planning-detail-heading"><div><span className="eyebrow">Vista previa</span><h3>{selectedCoachSession.title ?? "Planificación"}</h3></div><div><button className="secondary compact" onClick={beginPlanningEdit}>Editar</button><button className="secondary compact" onClick={duplicatePlanning}>Duplicar</button></div></div>{editingPlanning ? <div className="coach-session-editor planning-edit"><input aria-label="Editar nombre de la planificación" maxLength={120} value={editPlanningTitle} onChange={(event) => setEditPlanningTitle(event.target.value)} /><textarea aria-label="Editar contenido de la planificación" value={editPlanningContent} onChange={(event) => setEditPlanningContent(event.target.value)} /><div><button className="primary compact" onClick={savePlanningEdit}>Guardar cambios</button><button className="secondary compact" onClick={() => setEditingPlanning(false)}>Cancelar</button></div></div> : <WorkoutContent content={selectedCoachSession.content} />}</div>}
+          {selectedCoachSession && <div className="planning-detail"><div className="planning-detail-heading"><div><span className="eyebrow">Vista previa</span><h3>{selectedCoachSession.title ?? "Planificación"}</h3></div><div><button className="secondary compact" onClick={beginPlanningEdit}>Editar</button><button className="secondary compact" onClick={duplicatePlanning}>Duplicar</button><button className="danger compact" onClick={deletePlanning}>Eliminar</button></div></div>{editingPlanning ? <div className="coach-session-editor planning-edit"><input aria-label="Editar nombre de la planificación" maxLength={120} value={editPlanningTitle} onChange={(event) => setEditPlanningTitle(event.target.value)} /><textarea aria-label="Editar contenido de la planificación" value={editPlanningContent} onChange={(event) => setEditPlanningContent(event.target.value)} /><div><button className="primary compact" onClick={savePlanningEdit}>Guardar cambios</button><button className="secondary compact" onClick={() => setEditingPlanning(false)}>Cancelar</button></div></div> : <WorkoutContent content={selectedCoachSession.content} />}</div>}
           {selectedCoachSummary && selectedCoachSession && athletes.length > 0 && <div className="assign-panel">
             <label className="assignment-date">Día de asignación<input type="date" value={assignmentDate} onChange={(event) => setAssignmentDate(event.target.value)} required /></label>
             {groups.length > 0 && <><div className="assign-heading"><strong>Grupos</strong></div><div className="assign-list">{groups.map((group) => <label key={group.id}><input type="checkbox" checked={assignGroupIds.includes(group.id)} onChange={() => setAssignGroupIds((items) => items.includes(group.id) ? items.filter((id) => id !== group.id) : [...items, group.id])} />{group.name}</label>)}</div></>}

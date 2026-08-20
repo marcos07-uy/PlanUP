@@ -2,6 +2,7 @@ import type { APIGatewayProxyHandlerV2WithJWTAuthorizer } from "aws-lambda";
 import { randomUUID } from "node:crypto";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import {
+  BatchGetCommand,
   DeleteCommand,
   DynamoDBDocumentClient,
   GetCommand,
@@ -668,8 +669,26 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         if (items.length >= 500 && monthIndex + 1 < months.length) nextCursor = encodeCalendarCursor(monthIndex + 1);
       }
 
+      const rangeDays = Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000) + 1;
+      if (!cursor.key && cursor.monthIndex === 0 && rangeDays <= 7) {
+        const relations = await database.send(new QueryCommand({
+          TableName: tableName,
+          KeyConditionExpression: "PK = :pk AND begins_with(SK, :athlete)",
+          ExpressionAttributeValues: { ":pk": `COACH#${identity.id}`, ":athlete": "ATHLETE#" },
+          Limit: 50,
+        }));
+        const dates = Array.from({ length: rangeDays }, (_, offset) => addDays(from!, offset));
+        const legacyKeys = (relations.Items ?? []).flatMap((relation) => dates.map((date) => ({ PK: `ATHLETE#${relation.athleteId}`, SK: `SESSION#${identity.id}#${date}` })));
+        for (let offset = 0; offset < legacyKeys.length; offset += 100) {
+          const result = await database.send(new BatchGetCommand({ RequestItems: { [tableName!]: { Keys: legacyKeys.slice(offset, offset + 100) } } }));
+          items.push(...(result.Responses?.[tableName!] ?? []));
+        }
+      }
+
+      const uniqueItems = [...new Map(items.map((item) => [`${item.PK}|${item.SK}`, item])).values()];
+
       const today = todayInTimezone("America/Montevideo");
-      const sessions = items.map(sessionFromItem).filter((session) => {
+      const sessions = uniqueItems.map(sessionFromItem).filter((session) => {
         const sessionStatus = String(session.status);
         const overdue = sessionStatus === "pending" && String(session.date) < today;
         return (!athleteId || session.athleteId === athleteId) && (!status || status === sessionStatus || (status === "overdue" && overdue));
@@ -814,6 +833,18 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         throw error;
       }
       return response(200, coachSessionFromItem({ ...current.Item, title, content, summary: planningSummary(content), normalizedTitle: normalizeSearch(title), version: version + 1, updatedAt }));
+    }
+
+    if (coachSessionDetailMatch && method === "DELETE") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can delete coach sessions" });
+      const date = decodeURIComponent(coachSessionDetailMatch[1]);
+      const sessionId = decodeURIComponent(coachSessionDetailMatch[2]);
+      assertDate(date);
+      const key = { PK: `COACH#${identity.id}`, SK: `COACH_SESSION#${date}#${sessionId}` };
+      const existing = await database.send(new GetCommand({ TableName: tableName, Key: key }));
+      if (!existing.Item) return response(404, { message: "Coach session not found" });
+      await database.send(new DeleteCommand({ TableName: tableName, Key: key }));
+      return { statusCode: 204 };
     }
 
     const coachSessionDuplicateMatch = path.match(/^\/coach-sessions\/([^/]+)\/([^/]+)\/duplicate$/);

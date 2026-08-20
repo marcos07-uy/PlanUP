@@ -161,6 +161,7 @@ La duplicación semanal materializa nuevas `SESSION` para los mismos atletas y d
 | Listar sesiones por coach y fechas | `Query PK = ATHLETE#athlete`, `SK BETWEEN SESSION#coach#from AND SESSION#coach#to`. |
 | Actualizar ejecución | `UpdateItem(ATHLETE#athlete, SESSION#coach#date)` condicionado por `executionVersion`. |
 | Ver cumplimiento del coach | Una `Query` por mes en `GSI2`, usando `GSI2PK = COACH#coach#YYYY-MM` y un rango de fechas en `GSI2SK`. |
+| Compatibilidad semanal | Para rangos de hasta siete días, `Query` acotada de hasta 50 atletas y `BatchGetItem` de las claves de sesión; los resultados se deduplican con `GSI2`. |
 | Duplicar semana | Una `Query` por mes origen en `GSI2`, seguida por `GetItem` y `PutItem` condicional por sesión destino; máximo 200 sesiones. |
 | Listar grupos | `Query PK = COACH#coach`, rango `GROUP#` a `GROUP#~`. |
 | Listar miembros | `Query PK = GROUP#coach#group`, `begins_with(SK, ATHLETE#)`. |

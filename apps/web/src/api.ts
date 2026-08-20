@@ -38,6 +38,7 @@ export const api = {
     request<CoachSession>("/coach-sessions", token, { method: "POST", body: JSON.stringify({ date, title, content }) }),
   updateCoachSession: (token: string, session: CoachSession, title: string, content: string) =>
     request<CoachSession>(`/coach-sessions/${session.date}/${session.id}`, token, { method: "PUT", body: JSON.stringify({ title, content, expectedVersion: session.version }) }),
+  deleteCoachSession: (token: string, session: CoachSessionSummary) => request<void>(`/coach-sessions/${session.date}/${session.id}`, token, { method: "DELETE" }),
   duplicateCoachSession: (token: string, session: CoachSession, operationId: string, date: string) =>
     request<CoachSession>(`/coach-sessions/${session.date}/${session.id}/duplicate`, token, { method: "POST", body: JSON.stringify({ operationId, date }) }),
   assignCoachSession: (token: string, session: CoachSessionSummary, date: string, athleteIds: string[], groupIds: string[] = [], replacePending = false) =>
