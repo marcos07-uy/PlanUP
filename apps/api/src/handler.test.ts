@@ -16,8 +16,10 @@ class MemoryDb {
     const input = command.input as {
       Key?: { PK: string; SK: string };
       Item?: Item;
+      UpdateExpression?: string;
+      ExpressionAttributeNames?: Record<string, string>;
       IndexName?: string;
-      ExpressionAttributeValues?: Record<string, string>;
+      ExpressionAttributeValues?: Record<string, unknown>;
       ConditionExpression?: string;
       TransactItems?: Array<{ Put?: { Item: Item }; Delete?: { Key: { PK: string; SK: string } } }>;
       ExclusiveStartKey?: { PK: string; SK: string };
@@ -31,6 +33,12 @@ class MemoryDb {
       if (input.ConditionExpression === "attribute_not_exists(PK)" && this.items.has(key)) {
         throw Object.assign(new Error("Conditional check failed"), { name: "ConditionalCheckFailedException" });
       }
+      if (input.ConditionExpression?.includes("#status = :pending")) {
+        const current = this.items.get(key);
+        const values = input.ExpressionAttributeValues ?? {};
+        if (current && current.status !== undefined && current.status !== "pending") throw Object.assign(new Error("Conditional check failed"), { name: "ConditionalCheckFailedException" });
+        if (current && current.executionVersion !== undefined && current.executionVersion !== values[":executionVersion"]) throw Object.assign(new Error("Conditional check failed"), { name: "ConditionalCheckFailedException" });
+      }
       this.items.set(key, structuredClone(input.Item));
       return {};
     }
@@ -43,6 +51,29 @@ class MemoryDb {
     if (command.constructor.name === "DeleteCommand") {
       if (!input.Key) throw new Error("DeleteCommand Key is required");
       this.items.delete(this.key(input.Key.PK, input.Key.SK));
+      return {};
+    }
+
+    if (command.constructor.name === "UpdateCommand") {
+      if (!input.Key) throw new Error("UpdateCommand Key is required");
+      const key = this.key(input.Key.PK, input.Key.SK);
+      const current = this.items.get(key);
+      const values = input.ExpressionAttributeValues ?? {};
+      if (!current || (current.executionVersion !== undefined && current.executionVersion !== values[":expectedVersion"])) {
+        throw Object.assign(new Error("Conditional check failed"), { name: "ConditionalCheckFailedException" });
+      }
+      this.items.set(key, structuredClone({
+        ...current,
+        status: values[":status"],
+        result: values[":result"],
+        startedAt: values[":startedAt"],
+        completedAt: values[":completedAt"],
+        skippedAt: values[":skippedAt"],
+        executionUpdatedAt: values[":executionUpdatedAt"],
+        executionVersion: values[":nextVersion"],
+        lastMutationId: values[":mutationId"],
+        updatedAt: values[":updatedAt"],
+      } as Item));
       return {};
     }
 
@@ -62,10 +93,10 @@ class MemoryDb {
         return { Items: items.filter((item) => item.GSI1PK === values[":email"]) };
       }
       if (values[":athlete"]) {
-        return { Items: items.filter((item) => item.PK === values[":pk"] && item.SK.startsWith(values[":athlete"])) };
+        return { Items: items.filter((item) => item.PK === values[":pk"] && item.SK.startsWith(String(values[":athlete"]))) };
       }
       let matches = items
-        .filter((item) => item.PK === values[":pk"] && item.SK >= values[":from"] && item.SK <= values[":to"])
+        .filter((item) => item.PK === values[":pk"] && item.SK >= String(values[":from"]) && item.SK <= String(values[":to"]))
         .sort((a, b) => a.SK.localeCompare(b.SK));
       if (input.ScanIndexForward === false) matches.reverse();
       if (input.ExclusiveStartKey) {
@@ -94,7 +125,6 @@ class MemoryDb {
 }
 
 const coach = { sub: "coach-1", email: "Coach@Example.com", name: "Coach", "custom:role": "coach" };
-const secondCoach = { sub: "coach-2", email: "second@example.com", name: "Second Coach", "custom:role": "coach" };
 const athlete = { sub: "athlete-1", email: "athlete@example.com", name: "Athlete", "custom:role": "athlete" };
 
 function event(
@@ -258,9 +288,68 @@ describe("PlanUp API handler", () => {
     }));
 
     assert.equal(result.statusCode, 200);
-    assert.deepEqual(result.json, { assigned: 2 });
+    assert.deepEqual(result.json, { assigned: 2, skipped: 0, conflicts: [] });
     assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-25")?.content, "==wod\nAMRAP");
     assert.equal(db.get("ATHLETE#athlete-2", "SESSION#coach-1#2026-08-25")?.coachId, "coach-1");
+  });
+
+  it("lets only the athlete complete a session with validated results", async () => {
+    db.seed(
+      { PK: "ATHLETE#athlete-1", SK: "COACH#coach-1", entityType: "ATHLETE_COACH", coachId: "coach-1" },
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-25", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-25", content: "==wod\nAMRAP", updatedAt: "2026-08-20T00:00:00.000Z" },
+    );
+
+    const completed = await invoke(db, event("PUT", "/me/sessions/coach-1/2026-08-25/execution", athlete, {
+      body: {
+        status: "completed",
+        expectedVersion: 0,
+        clientMutationId: "mutation-1",
+        result: { metrics: [{ id: "load", type: "weight", label: "Front squat", value: 90, unit: "kg" }], rpe: 8, comment: "Good session" },
+      },
+    }));
+
+    assert.equal(completed.statusCode, 200);
+    assert.equal(completed.json.status, "completed");
+    assert.equal(completed.json.executionVersion, 1);
+    assert.equal(completed.json.result.metrics[0].value, 90);
+    assert.equal(typeof completed.json.startedAt, "string");
+    assert.equal(typeof completed.json.completedAt, "string");
+
+    const coachAttempt = await invoke(db, event("PUT", "/me/sessions/coach-1/2026-08-25/execution", coach, {
+      body: { status: "completed", expectedVersion: 1, clientMutationId: "mutation-2" },
+    }));
+    assert.equal(coachAttempt.statusCode, 403);
+  });
+
+  it("makes execution retries idempotent and rejects stale versions", async () => {
+    db.seed(
+      { PK: "ATHLETE#athlete-1", SK: "COACH#coach-1", entityType: "ATHLETE_COACH", coachId: "coach-1" },
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-25", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-25", content: "WOD", status: "pending", executionVersion: 0, updatedAt: "2026-08-20T00:00:00.000Z" },
+    );
+    const request = event("PUT", "/me/sessions/coach-1/2026-08-25/execution", athlete, {
+      body: { status: "in_progress", expectedVersion: 0, clientMutationId: "same-mutation" },
+    });
+    const first = await invoke(db, request);
+    const retry = await invoke(db, request);
+    assert.equal(first.json.executionVersion, 1);
+    assert.equal(retry.json.executionVersion, 1);
+
+    const stale = await invoke(db, event("PUT", "/me/sessions/coach-1/2026-08-25/execution", athlete, {
+      body: { status: "completed", expectedVersion: 0, clientMutationId: "new-mutation" },
+    }));
+    assert.equal(stale.statusCode, 409);
+  });
+
+  it("never replaces an active or completed session and requires confirmation for pending", async () => {
+    db.seed(
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },
+      { PK: "COACH#coach-1", SK: "COACH_SESSION#2026-08-18#base-1", entityType: "COACH_SESSION", id: "base-1", coachId: "coach-1", title: "New", date: "2026-08-18", content: "New content" },
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-25", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-25", content: "Old content", status: "completed", executionVersion: 2, result: { metrics: [], rpe: 7 } },
+    );
+    const blocked = await invoke(db, event("POST", "/coach-sessions/2026-08-18/base-1/assign", coach, { body: { date: "2026-08-25", athleteIds: ["athlete-1"], replacePending: true } }));
+    assert.equal(blocked.json.assigned, 0);
+    assert.equal(blocked.json.conflicts[0].reason, "session_completed");
+    assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-25")?.content, "Old content");
   });
 
   it("keeps sessions from different coaches isolated on the same date", async () => {
@@ -269,10 +358,9 @@ describe("PlanUp API handler", () => {
       { PK: "COACH#coach-2", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },
       { PK: "ATHLETE#athlete-1", SK: "COACH#coach-1", entityType: "ATHLETE_COACH", coachId: "coach-1" },
       { PK: "ATHLETE#athlete-1", SK: "COACH#coach-2", entityType: "ATHLETE_COACH", coachId: "coach-2" },
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-26", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-26", content: "Coach one" },
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-2#2026-08-26", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-2", date: "2026-08-26", content: "Coach two" },
     );
-
-    await invoke(db, event("PUT", "/athletes/athlete-1/sessions/2026-08-26", coach, { body: { content: "Coach one" } }));
-    await invoke(db, event("PUT", "/athletes/athlete-1/sessions/2026-08-26", secondCoach, { body: { content: "Coach two" } }));
 
     assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-26")?.content, "Coach one");
     assert.equal(db.get("ATHLETE#athlete-1", "SESSION#coach-2#2026-08-26")?.content, "Coach two");

@@ -40,7 +40,11 @@ export const demoSessions: TrainingSession[] = [
     athleteId: "athlete-1",
     coachId: "coach-demo",
     date: iso(0),
+    title: "Fuerza y AMRAP",
     content: "==warmup\n3 rondas:\n• 10 air squats\n• 8 push-ups\n• 200 m remo\n\n==fuerza\nBack squat 5 × 5 al 75%\nDescanso: 2 minutos\n\n==wod\n12 min AMRAP\n8 thrusters (35/25 kg)\n10 pull-ups\n12 box jumps",
+    contentFormat: "text-v1",
+    status: "pending",
+    executionVersion: 0,
     updatedAt: new Date().toISOString(),
   },
   {
@@ -48,6 +52,9 @@ export const demoSessions: TrainingSession[] = [
     coachId: "coach-demo",
     date: iso(2),
     content: "==tecnica\n15 minutos de progresiones de handstand.\n\n==condicionamiento\n5 rondas por tiempo:\n400 m carrera\n15 kettlebell swings",
+    contentFormat: "text-v1",
+    status: "pending",
+    executionVersion: 0,
     updatedAt: new Date().toISOString(),
   },
   {
@@ -55,6 +62,9 @@ export const demoSessions: TrainingSession[] = [
     coachId: "coach-2",
     date: iso(0),
     content: "==movilidad\nTrabajo de cadera y tobillo.\n\n==técnica\nProgresiones de carrera.",
+    contentFormat: "text-v1",
+    status: "pending",
+    executionVersion: 0,
     updatedAt: new Date().toISOString(),
   },
 ];

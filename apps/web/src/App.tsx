@@ -324,10 +324,21 @@ function Dashboard({ token, profile, onLogout }: { token: string; profile: UserP
 
   async function assignCoachSession() {
     if (!selectedCoachSummary || !selectedCoachSession || !assignAthleteIds.length || !assignmentDate) return;
-    const assignedCount = assignAthleteIds.length;
-    if (!demoMode) await api.assignCoachSession(token, selectedCoachSummary, assignmentDate, assignAthleteIds);
+    let assignedCount = assignAthleteIds.length;
+    let skippedCount = 0;
+    if (!demoMode) {
+      const first = await api.assignCoachSession(token, selectedCoachSummary, assignmentDate, assignAthleteIds);
+      assignedCount = first.assigned;
+      skippedCount = first.skipped;
+      const pendingIds = first.conflicts.filter((item) => item.reason === "pending_session_exists").map((item) => item.athleteId);
+      if (pendingIds.length && window.confirm(`Ya existen ${pendingIds.length} sesiones pendientes para ese día. ¿Querés reemplazarlas?`)) {
+        const replacement = await api.assignCoachSession(token, selectedCoachSummary, assignmentDate, pendingIds, true);
+        assignedCount += replacement.assigned;
+        skippedCount = first.skipped - pendingIds.length + replacement.skipped;
+      }
+    }
     setAssignAthleteIds([]);
-    setNotice(`Sesión asignada a ${assignedCount} atleta${assignedCount === 1 ? "" : "s"}`); setTimeout(() => setNotice(""), 2200);
+    setNotice(`Sesión asignada a ${assignedCount} atleta${assignedCount === 1 ? "" : "s"}${skippedCount ? `; ${skippedCount} sin cambios` : ""}`); setTimeout(() => setNotice(""), 2200);
   }
 
   const visibleSessions = sessions.filter((item) => item.athleteId === selected?.id).sort((a, b) => a.date.localeCompare(b.date));

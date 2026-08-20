@@ -8,6 +8,7 @@ import {
   PutCommand,
   QueryCommand,
   TransactWriteCommand,
+  UpdateCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 const tableName = process.env.TABLE_NAME;
@@ -83,9 +84,85 @@ function sessionFromItem(item: Record<string, unknown>) {
     athleteId: item.athleteId,
     coachId: item.coachId,
     date: item.date,
+    title: item.title,
     content: item.content,
+    contentFormat: item.contentFormat ?? "text-v1",
+    status: item.status ?? "pending",
+    result: item.result,
+    startedAt: item.startedAt,
+    completedAt: item.completedAt,
+    skippedAt: item.skippedAt,
+    executionUpdatedAt: item.executionUpdatedAt,
+    executionVersion: item.executionVersion ?? 0,
     updatedAt: item.updatedAt,
   };
+}
+
+type SessionStatus = "pending" | "in_progress" | "completed" | "skipped";
+type MetricType = "weight" | "reps" | "time" | "distance" | "note";
+
+interface SessionMetric {
+  id: string;
+  type: MetricType;
+  label: string;
+  value?: number;
+  unit?: string;
+  note?: string;
+}
+
+interface SessionResult {
+  metrics: SessionMetric[];
+  rpe?: number;
+  comment?: string;
+}
+
+function assertExecutionStatus(value: unknown): Exclude<SessionStatus, "pending"> {
+  if (value !== "in_progress" && value !== "completed" && value !== "skipped") {
+    throw Object.assign(new Error("Session status must be in_progress, completed, or skipped"), { statusCode: 400 });
+  }
+  return value;
+}
+
+function assertStatusTransition(current: SessionStatus, next: Exclude<SessionStatus, "pending">) {
+  const allowed: Record<SessionStatus, SessionStatus[]> = {
+    pending: ["in_progress", "completed", "skipped"],
+    in_progress: ["in_progress", "completed", "skipped"],
+    completed: ["completed"],
+    skipped: ["skipped", "in_progress", "completed"],
+  };
+  if (!allowed[current].includes(next)) {
+    throw Object.assign(new Error(`Session cannot transition from ${current} to ${next}`), { statusCode: 409 });
+  }
+}
+
+function assertResult(value: unknown, status: Exclude<SessionStatus, "pending">): SessionResult | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw Object.assign(new Error("Session result must be an object"), { statusCode: 400 });
+  const input = value as { metrics?: unknown; rpe?: unknown; comment?: unknown };
+  if (status !== "completed" && input.metrics !== undefined) throw Object.assign(new Error("Metrics can only be saved for a completed session"), { statusCode: 400 });
+  const metrics = input.metrics ?? [];
+  if (!Array.isArray(metrics) || metrics.length > 5) throw Object.assign(new Error("A session result can contain up to 5 metrics"), { statusCode: 400 });
+  const parsedMetrics = metrics.map((metric, index): SessionMetric => {
+    if (!metric || typeof metric !== "object" || Array.isArray(metric)) throw Object.assign(new Error(`Metric ${index + 1} is invalid`), { statusCode: 400 });
+    const item = metric as Record<string, unknown>;
+    const types: MetricType[] = ["weight", "reps", "time", "distance", "note"];
+    if (typeof item.id !== "string" || !item.id.trim() || item.id.length > 100) throw Object.assign(new Error(`Metric ${index + 1} requires a valid id`), { statusCode: 400 });
+    if (!types.includes(item.type as MetricType)) throw Object.assign(new Error(`Metric ${index + 1} has an invalid type`), { statusCode: 400 });
+    if (typeof item.label !== "string" || !item.label.trim() || item.label.length > 80) throw Object.assign(new Error(`Metric ${index + 1} requires a label`), { statusCode: 400 });
+    if (item.type === "note") {
+      if (typeof item.note !== "string" || !item.note.trim() || item.note.length > 500) throw Object.assign(new Error(`Metric ${index + 1} requires a note`), { statusCode: 400 });
+      return { id: item.id.trim(), type: "note", label: item.label.trim(), note: item.note.trim() };
+    }
+    if (typeof item.value !== "number" || !Number.isFinite(item.value) || item.value < 0) throw Object.assign(new Error(`Metric ${index + 1} requires a non-negative value`), { statusCode: 400 });
+    if (item.type === "reps" && !Number.isInteger(item.value)) throw Object.assign(new Error(`Metric ${index + 1} repetitions must be an integer`), { statusCode: 400 });
+    const allowedUnits: Partial<Record<MetricType, string[]>> = { weight: ["kg", "lb"], time: ["seconds"], distance: ["m", "km"] };
+    const units = allowedUnits[item.type as MetricType];
+    if (units && (typeof item.unit !== "string" || !units.includes(item.unit))) throw Object.assign(new Error(`Metric ${index + 1} has an invalid unit`), { statusCode: 400 });
+    return { id: item.id.trim(), type: item.type as MetricType, label: item.label.trim(), value: item.value, unit: typeof item.unit === "string" ? item.unit : undefined };
+  });
+  if (input.rpe !== undefined && (typeof input.rpe !== "number" || !Number.isInteger(input.rpe) || input.rpe < 1 || input.rpe > 10)) throw Object.assign(new Error("RPE must be an integer between 1 and 10"), { statusCode: 400 });
+  if (input.comment !== undefined && (typeof input.comment !== "string" || input.comment.trim().length > 1_000)) throw Object.assign(new Error("Session comment cannot exceed 1,000 characters"), { statusCode: 400 });
+  return { metrics: parsedMetrics, rpe: input.rpe as number | undefined, comment: typeof input.comment === "string" ? input.comment.trim() : undefined };
 }
 
 function coachFromItem(item: Record<string, unknown>) {
@@ -359,7 +436,7 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       const date = decodeURIComponent(coachSessionAssignMatch[1]);
       const sessionId = decodeURIComponent(coachSessionAssignMatch[2]);
       assertDate(date);
-      const body = JSON.parse(event.body ?? "{}") as { athleteIds?: string[]; date?: string };
+      const body = JSON.parse(event.body ?? "{}") as { athleteIds?: string[]; date?: string; replacePending?: boolean };
       const assignmentDate = body.date ?? date;
       assertDate(assignmentDate);
       const athleteIds = [...new Set(body.athleteIds ?? [])].filter(Boolean);
@@ -373,21 +450,108 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
 
       await Promise.all(athleteIds.map((athleteId) => assertCoachAccess(database, identity, athleteId)));
       const updatedAt = new Date().toISOString();
-      await Promise.all(athleteIds.map((athleteId) => database.send(new PutCommand({
-        TableName: tableName,
-        Item: {
-          PK: `ATHLETE#${athleteId}`,
-          SK: `SESSION#${identity.id}#${assignmentDate}`,
-          entityType: "SESSION",
-          athleteId,
-          coachId: identity.id,
-          date: assignmentDate,
-          content: coachSession.Item?.content,
-          updatedAt,
-        },
-      }))));
+      const outcomes = await Promise.all(athleteIds.map(async (athleteId) => {
+        const key = { PK: `ATHLETE#${athleteId}`, SK: `SESSION#${identity.id}#${assignmentDate}` };
+        const existing = await database.send(new GetCommand({ TableName: tableName, Key: key }));
+        const existingStatus = (existing.Item?.status ?? "pending") as SessionStatus;
+        if (existing.Item && (!body.replacePending || existingStatus !== "pending")) {
+          return { athleteId, assigned: false, reason: existingStatus === "pending" ? "pending_session_exists" : `session_${existingStatus}` };
+        }
+        try {
+          await database.send(new PutCommand({
+            TableName: tableName,
+            Item: {
+              ...existing.Item,
+              ...key,
+              entityType: "SESSION",
+              athleteId,
+              coachId: identity.id,
+              date: assignmentDate,
+              title: coachSession.Item?.title,
+              content: coachSession.Item?.content,
+              contentFormat: "text-v1",
+              sourcePlanningId: sessionId,
+              sourcePlanningDate: date,
+              status: "pending",
+              executionVersion: existing.Item?.executionVersion ?? 0,
+              updatedAt,
+            },
+            ConditionExpression: existing.Item
+              ? "(#status = :pending OR attribute_not_exists(#status)) AND (attribute_not_exists(executionVersion) OR executionVersion = :executionVersion)"
+              : "attribute_not_exists(PK)",
+            ExpressionAttributeNames: existing.Item ? { "#status": "status" } : undefined,
+            ExpressionAttributeValues: existing.Item ? { ":pending": "pending", ":executionVersion": existing.Item.executionVersion ?? 0 } : undefined,
+          }));
+          return { athleteId, assigned: true };
+        } catch (error) {
+          if (error instanceof Error && error.name === "ConditionalCheckFailedException") return { athleteId, assigned: false, reason: "session_changed" };
+          throw error;
+        }
+      }));
+      const conflicts = outcomes.filter((item) => !item.assigned).map(({ athleteId, reason }) => ({ athleteId, reason }));
+      return response(200, { assigned: outcomes.length - conflicts.length, skipped: conflicts.length, conflicts });
+    }
 
-      return response(200, { assigned: athleteIds.length });
+    const executionMatch = path.match(/^\/me\/sessions\/([^/]+)\/([^/]+)\/execution$/);
+    if (executionMatch && method === "PUT") {
+      if (identity.role !== "athlete") return response(403, { message: "Only athletes can update session results" });
+      const coachId = decodeURIComponent(executionMatch[1]);
+      const executionDate = decodeURIComponent(executionMatch[2]);
+      assertDate(executionDate);
+      const body = JSON.parse(event.body ?? "{}") as { status?: unknown; result?: unknown; expectedVersion?: unknown; clientMutationId?: unknown };
+      const nextStatus = assertExecutionStatus(body.status);
+      if (!Number.isInteger(body.expectedVersion) || Number(body.expectedVersion) < 0) throw Object.assign(new Error("expectedVersion must be a non-negative integer"), { statusCode: 400 });
+      if (typeof body.clientMutationId !== "string" || !body.clientMutationId.trim() || body.clientMutationId.length > 100) throw Object.assign(new Error("clientMutationId is required"), { statusCode: 400 });
+
+      const relation = await database.send(new GetCommand({ TableName: tableName, Key: { PK: `ATHLETE#${identity.id}`, SK: `COACH#${coachId}` } }));
+      if (!relation.Item) return response(403, { message: "Coach is not linked to this athlete" });
+      const key = { PK: `ATHLETE#${identity.id}`, SK: `SESSION#${coachId}#${executionDate}` };
+      const current = await database.send(new GetCommand({ TableName: tableName, Key: key }));
+      if (!current.Item) return response(404, { message: "Session not found" });
+      if (current.Item.lastMutationId === body.clientMutationId) return response(200, sessionFromItem(current.Item));
+      const currentStatus = (current.Item.status ?? "pending") as SessionStatus;
+      const currentVersion = Number(current.Item.executionVersion ?? 0);
+      if (currentVersion !== body.expectedVersion) return response(409, { message: "Session was updated on another device", session: sessionFromItem(current.Item) });
+      assertStatusTransition(currentStatus, nextStatus);
+      const result = assertResult(body.result, nextStatus);
+      const now = new Date().toISOString();
+      const updated = {
+        ...current.Item,
+        status: nextStatus,
+        result: result ?? current.Item.result,
+        startedAt: current.Item.startedAt ?? (nextStatus === "in_progress" || nextStatus === "completed" ? now : undefined),
+        completedAt: nextStatus === "completed" ? current.Item.completedAt ?? now : current.Item.completedAt,
+        skippedAt: nextStatus === "skipped" ? current.Item.skippedAt ?? now : current.Item.skippedAt,
+        executionUpdatedAt: now,
+        executionVersion: currentVersion + 1,
+        lastMutationId: body.clientMutationId.trim(),
+        updatedAt: now,
+      };
+      try {
+        await database.send(new UpdateCommand({
+          TableName: tableName,
+          Key: key,
+          UpdateExpression: "SET #status = :status, #result = :result, startedAt = :startedAt, completedAt = :completedAt, skippedAt = :skippedAt, executionUpdatedAt = :executionUpdatedAt, executionVersion = :nextVersion, lastMutationId = :mutationId, updatedAt = :updatedAt",
+          ConditionExpression: "attribute_exists(PK) AND (attribute_not_exists(executionVersion) OR executionVersion = :expectedVersion)",
+          ExpressionAttributeNames: { "#status": "status", "#result": "result" },
+          ExpressionAttributeValues: {
+            ":status": updated.status,
+            ":result": updated.result ?? null,
+            ":startedAt": updated.startedAt ?? null,
+            ":completedAt": updated.completedAt ?? null,
+            ":skippedAt": updated.skippedAt ?? null,
+            ":executionUpdatedAt": now,
+            ":nextVersion": updated.executionVersion,
+            ":mutationId": updated.lastMutationId,
+            ":updatedAt": now,
+            ":expectedVersion": currentVersion,
+          },
+        }));
+      } catch (error) {
+        if (error instanceof Error && error.name === "ConditionalCheckFailedException") return response(409, { message: "Session was updated on another device" });
+        throw error;
+      }
+      return response(200, sessionFromItem(updated));
     }
 
     const match = path.match(/^\/athletes\/([^/]+)\/sessions(?:\/([^/]+))?$/);
@@ -430,34 +594,6 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       for (const item of legacy.Items ?? []) if (item.coachId === coachId) sessionsByDate.set(String(item.date), item);
       for (const item of scoped.Items ?? []) sessionsByDate.set(String(item.date), item);
       return response(200, [...sessionsByDate.values()].map(sessionFromItem).sort((a, b) => String(a.date).localeCompare(String(b.date))));
-    }
-
-    assertDate(date);
-    await assertCoachAccess(database, identity, athleteId);
-
-    if (method === "PUT") {
-      const body = JSON.parse(event.body ?? "{}") as { content?: string };
-      const content = assertContent(body.content);
-      const item = {
-        PK: `ATHLETE#${athleteId}`,
-        SK: `SESSION#${identity.id}#${date}`,
-        entityType: "SESSION",
-        athleteId,
-        coachId: identity.id,
-        date,
-        content,
-        updatedAt: new Date().toISOString(),
-      };
-      await database.send(new PutCommand({ TableName: tableName, Item: item }));
-      return response(200, sessionFromItem(item));
-    }
-
-    if (method === "DELETE") {
-      await database.send(new DeleteCommand({ TableName: tableName, Key: { PK: `ATHLETE#${athleteId}`, SK: `SESSION#${identity.id}#${date}` } }));
-      const legacyKey = { PK: `ATHLETE#${athleteId}`, SK: `SESSION#${date}` };
-      const legacy = await database.send(new GetCommand({ TableName: tableName, Key: legacyKey }));
-      if (legacy.Item?.coachId === identity.id) await database.send(new DeleteCommand({ TableName: tableName, Key: legacyKey }));
-      return { statusCode: 204 };
     }
 
     return response(405, { message: "Method not allowed" });
