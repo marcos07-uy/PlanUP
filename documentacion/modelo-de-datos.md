@@ -137,6 +137,8 @@ Un grupo se guarda como `PK = COACH#coach`, `SK = GROUP#group`. Cada miembro gen
 
 Al asignar, la API consulta los miembros de cada grupo, los une con los atletas seleccionados individualmente y elimina IDs repetidos. Se crean sesiones concretas: modificar la membresía posteriormente no altera asignaciones anteriores.
 
+La duplicación semanal materializa nuevas `SESSION` para los mismos atletas y desplaza cada fecha por semanas completas. Cada copia guarda `duplicatedFrom` y `duplicateWeekOperationId`, comienza en `pending` con `executionVersion = 0` y no hereda resultados. La clave natural y un `PutItem` condicional impiden sobrescribir una sesión que ya exista en el destino.
+
 ## Patrones de acceso
 
 | Necesidad | Operación DynamoDB |
@@ -153,6 +155,7 @@ Al asignar, la API consulta los miembros de cada grupo, los une con los atletas 
 | Listar sesiones por coach y fechas | `Query PK = ATHLETE#athlete`, `SK BETWEEN SESSION#coach#from AND SESSION#coach#to`. |
 | Actualizar ejecución | `UpdateItem(ATHLETE#athlete, SESSION#coach#date)` condicionado por `executionVersion`. |
 | Ver cumplimiento del coach | Una `Query` por mes en `GSI2`, usando `GSI2PK = COACH#coach#YYYY-MM` y un rango de fechas en `GSI2SK`. |
+| Duplicar semana | Una `Query` por mes origen en `GSI2`, seguida por `GetItem` y `PutItem` condicional por sesión destino; máximo 200 sesiones. |
 | Listar grupos | `Query PK = COACH#coach`, rango `GROUP#` a `GROUP#~`. |
 | Listar miembros | `Query PK = GROUP#coach#group`, `begins_with(SK, ATHLETE#)`. |
 

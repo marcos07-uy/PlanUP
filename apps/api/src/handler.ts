@@ -191,6 +191,19 @@ function assertDate(value: string | undefined) {
   }
 }
 
+function addDays(value: string, days: number) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function assertWeekStart(value: string | undefined) {
+  assertDate(value);
+  if (new Date(`${value}T12:00:00Z`).getUTCDay() !== 1) {
+    throw Object.assign(new Error("Week start must be a Monday"), { statusCode: 400 });
+  }
+}
+
 function assertContent(value: string | undefined) {
   const content = value?.trim();
   if (!content || content.length > 20_000) {
@@ -566,6 +579,94 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
         else summary.pending += 1;
       }
       return response(200, { items: sessions, summary, nextCursor });
+    }
+
+    if (path === "/coach/calendar/duplicate" && method === "POST") {
+      if (identity.role !== "coach") return response(403, { message: "Only coaches can duplicate weeks" });
+      const body = JSON.parse(event.body ?? "{}") as { sourceFrom?: string; targetFrom?: string; operationId?: unknown };
+      assertWeekStart(body.sourceFrom);
+      assertWeekStart(body.targetFrom);
+      if (body.sourceFrom === body.targetFrom) return response(400, { message: "Source and target weeks must be different" });
+      if (typeof body.operationId !== "string" || !/^[0-9a-f-]{36}$/i.test(body.operationId)) return response(400, { message: "A valid operationId is required" });
+      const sourceFrom = body.sourceFrom!;
+      const targetFrom = body.targetFrom!;
+
+      const sourceTo = addDays(sourceFrom, 6);
+      const months = calendarMonths(sourceFrom, sourceTo);
+      const sourceItems: Record<string, unknown>[] = [];
+      for (const month of months) {
+        if (sourceItems.length >= 201) break;
+        let cursor: Record<string, unknown> | undefined;
+        do {
+          const result = await database.send(new QueryCommand({
+            TableName: tableName,
+            IndexName: "GSI2",
+            KeyConditionExpression: "GSI2PK = :pk AND GSI2SK BETWEEN :from AND :to",
+            ExpressionAttributeValues: {
+              ":pk": `COACH#${identity.id}#${month}`,
+              ":from": `DATE#${sourceFrom}#ATHLETE#`,
+              ":to": `DATE#${sourceTo}#ATHLETE#~`,
+            },
+            ExclusiveStartKey: cursor,
+            Limit: 201 - sourceItems.length,
+          }));
+          sourceItems.push(...(result.Items ?? []));
+          cursor = result.LastEvaluatedKey;
+        } while (cursor && sourceItems.length <= 200);
+      }
+      if (!sourceItems.length) return response(400, { message: "Source week has no assigned sessions" });
+      if (sourceItems.length > 200) return response(400, { message: "A week can contain up to 200 sessions" });
+
+      const dayOffset = Math.round((Date.parse(`${targetFrom}T12:00:00Z`) - Date.parse(`${sourceFrom}T12:00:00Z`)) / 86_400_000);
+      const operationId = body.operationId.toLowerCase();
+      const updatedAt = new Date().toISOString();
+      const outcomes = await Promise.all(sourceItems.map(async (source) => {
+        const athleteId = String(source.athleteId);
+        const targetDate = addDays(String(source.date), dayOffset);
+        const key = { PK: `ATHLETE#${athleteId}`, SK: `SESSION#${identity.id}#${targetDate}` };
+        const existing = await database.send(new GetCommand({ TableName: tableName, Key: key }));
+        if (existing.Item) {
+          const sameOperation = existing.Item.duplicateWeekOperationId === operationId;
+          return { athleteId, date: targetDate, created: false, unchanged: sameOperation, reason: sameOperation ? undefined : "session_exists" };
+        }
+        const item = {
+          ...key,
+          entityType: "SESSION",
+          athleteId,
+          coachId: identity.id,
+          date: targetDate,
+          title: source.title,
+          content: source.content,
+          contentFormat: source.contentFormat ?? "text-v1",
+          sourcePlanningId: source.sourcePlanningId,
+          sourcePlanningDate: source.sourcePlanningDate,
+          status: "pending",
+          executionVersion: 0,
+          duplicatedFrom: { date: source.date, athleteId },
+          duplicateWeekOperationId: operationId,
+          GSI2PK: `COACH#${identity.id}#${targetDate.slice(0, 7)}`,
+          GSI2SK: `DATE#${targetDate}#ATHLETE#${athleteId}`,
+          updatedAt,
+        };
+        try {
+          await database.send(new PutCommand({ TableName: tableName, Item: item, ConditionExpression: "attribute_not_exists(PK)" }));
+          return { athleteId, date: targetDate, created: true, unchanged: false, reason: undefined };
+        } catch (error) {
+          if (error instanceof Error && error.name === "ConditionalCheckFailedException") {
+            const concurrent = await database.send(new GetCommand({ TableName: tableName, Key: key }));
+            const sameOperation = concurrent.Item?.duplicateWeekOperationId === operationId;
+            return { athleteId, date: targetDate, created: false, unchanged: sameOperation, reason: sameOperation ? undefined : "session_changed" };
+          }
+          throw error;
+        }
+      }));
+      const conflicts = outcomes.filter((item) => item.reason).map(({ athleteId, date, reason }) => ({ athleteId, date, reason }));
+      return response(200, {
+        created: outcomes.filter((item) => item.created).length,
+        unchanged: outcomes.filter((item) => item.unchanged).length,
+        skipped: conflicts.length,
+        conflicts,
+      });
     }
 
     const coachSessionDetailMatch = path.match(/^\/coach-sessions\/([^/]+)\/([^/]+)$/);

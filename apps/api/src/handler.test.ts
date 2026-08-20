@@ -458,6 +458,26 @@ describe("PlanUp API handler", () => {
     assert.equal(db.queryCount, 2);
   });
 
+  it("duplicates an assigned week idempotently without overwriting target sessions", async () => {
+    db.seed(
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-17", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-17", title: "Strength", content: "Squat", status: "completed", result: { rpe: 8 }, executionVersion: 3, GSI2PK: "COACH#coach-1#2026-08", GSI2SK: "DATE#2026-08-17#ATHLETE#athlete-1" },
+      { PK: "ATHLETE#athlete-2", SK: "SESSION#coach-1#2026-08-18", entityType: "SESSION", athleteId: "athlete-2", coachId: "coach-1", date: "2026-08-18", title: "Intervals", content: "Run", status: "pending", GSI2PK: "COACH#coach-1#2026-08", GSI2SK: "DATE#2026-08-18#ATHLETE#athlete-2" },
+      { PK: "ATHLETE#athlete-2", SK: "SESSION#coach-1#2026-08-25", entityType: "SESSION", athleteId: "athlete-2", coachId: "coach-1", date: "2026-08-25", content: "Do not replace", status: "pending" },
+    );
+    const body = { sourceFrom: "2026-08-17", targetFrom: "2026-08-24", operationId: "11111111-1111-4111-8111-111111111111" };
+    const first = await invoke(db, event("POST", "/coach/calendar/duplicate", coach, { body }));
+    const retry = await invoke(db, event("POST", "/coach/calendar/duplicate", coach, { body }));
+
+    assert.deepEqual({ created: first.json.created, unchanged: first.json.unchanged, skipped: first.json.skipped }, { created: 1, unchanged: 0, skipped: 1 });
+    assert.deepEqual({ created: retry.json.created, unchanged: retry.json.unchanged, skipped: retry.json.skipped }, { created: 0, unchanged: 1, skipped: 1 });
+    const copy = db.get("ATHLETE#athlete-1", "SESSION#coach-1#2026-08-24");
+    assert.equal(copy?.content, "Squat");
+    assert.equal(copy?.status, "pending");
+    assert.equal(copy?.executionVersion, 0);
+    assert.equal(copy?.result, undefined);
+    assert.equal(db.get("ATHLETE#athlete-2", "SESSION#coach-1#2026-08-25")?.content, "Do not replace");
+  });
+
   it("keeps sessions from different coaches isolated on the same date", async () => {
     db.seed(
       { PK: "COACH#coach-1", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },
