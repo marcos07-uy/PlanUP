@@ -88,12 +88,25 @@ Aceptar crea las dos relaciones y elimina la invitación. Rechazar solamente eli
   "athleteId": "<athlete-sub>",
   "coachId": "<coach-sub>",
   "date": "2026-08-18",
+  "title": "Fuerza y AMRAP",
   "content": "CALENTAMIENTO\n...\n\nFUERZA\n...\n\nWOD\n...",
+  "contentFormat": "text-v1",
+  "status": "completed",
+  "executionVersion": 2,
+  "startedAt": "2026-08-18T19:00:00.000Z",
+  "completedAt": "2026-08-18T20:00:00.000Z",
+  "result": {
+    "metrics": [{ "id": "load", "type": "weight", "label": "Front squat", "value": 90, "unit": "kg" }],
+    "rpe": 8,
+    "comment": "Buena sesión"
+  },
   "updatedAt": "2026-08-18T20:00:00.000Z"
 }
 ```
 
 Hay como máximo una sesión por combinación de atleta, coach y fecha. Dos coaches pueden planificar el mismo día sin sobrescribirse. La API también lee temporalmente el formato anterior `SESSION#fecha` y lo atribuye mediante `coachId`.
+
+El estado puede ser `pending`, `in_progress`, `completed` o `skipped`. Una sesión antigua sin estado se interpreta como `pending`. Sólo el atleta propietario puede actualizar la ejecución y sus resultados. `executionVersion` evita que dos dispositivos sobrescriban cambios y `lastMutationId` permite repetir una solicitud de forma idempotente.
 
 ### Planificación reutilizable del entrenador
 
@@ -112,7 +125,7 @@ Hay como máximo una sesión por combinación de atleta, coach y fecha. Dos coac
 }
 ```
 
-La fecha identifica cuándo se creó la planificación y forma parte de su clave. No limita su reutilización: al asignarla, la API recibe una fecha de destino independiente y crea o reemplaza la sesión diaria de cada atleta seleccionado. El resumen, limitado a 180 caracteres, alimenta las tarjetas sin enviar el contenido completo.
+La fecha identifica cuándo se creó la planificación y forma parte de su clave. No limita su reutilización: al asignarla, la API recibe una fecha de destino independiente. Una sesión pendiente existente sólo se reemplaza después de confirmación; una sesión iniciada, completada u omitida nunca se sobrescribe. El resumen, limitado a 180 caracteres, alimenta las tarjetas sin enviar el contenido completo.
 
 ## Patrones de acceso
 

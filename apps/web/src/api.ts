@@ -1,4 +1,4 @@
-import type { Athlete, Coach, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, TrainingSession, UserProfile } from "./types";
+import type { Athlete, Coach, CoachInvitation, CoachSession, CoachSessionPage, CoachSessionSummary, SessionResult, TrainingSession, UserProfile } from "./types";
 
 const apiUrl = import.meta.env.VITE_API_URL;
 
@@ -36,18 +36,16 @@ export const api = {
     request<CoachSession>(`/coach-sessions/${session.date}/${session.id}`, token),
   createCoachSession: (token: string, date: string, title: string, content: string) =>
     request<CoachSession>("/coach-sessions", token, { method: "POST", body: JSON.stringify({ date, title, content }) }),
-  assignCoachSession: (token: string, session: CoachSessionSummary, date: string, athleteIds: string[]) =>
-    request<{ assigned: number }>(`/coach-sessions/${session.date}/${session.id}/assign`, token, {
+  assignCoachSession: (token: string, session: CoachSessionSummary, date: string, athleteIds: string[], replacePending = false) =>
+    request<{ assigned: number; skipped: number; conflicts: { athleteId: string; reason: string }[] }>(`/coach-sessions/${session.date}/${session.id}/assign`, token, {
       method: "POST",
-      body: JSON.stringify({ date, athleteIds }),
+      body: JSON.stringify({ date, athleteIds, replacePending }),
     }),
   sessions: (token: string, athleteId: string, coachId: string, from: string, to: string) =>
     request<TrainingSession[]>(`/athletes/${athleteId}/sessions?coachId=${encodeURIComponent(coachId)}&from=${from}&to=${to}`, token),
-  saveSession: (token: string, athleteId: string, date: string, content: string) =>
-    request<TrainingSession>(`/athletes/${athleteId}/sessions/${date}`, token, {
+  updateSessionExecution: (token: string, coachId: string, date: string, status: "in_progress" | "completed" | "skipped", expectedVersion: number, clientMutationId: string, result?: SessionResult) =>
+    request<TrainingSession>(`/me/sessions/${encodeURIComponent(coachId)}/${date}/execution`, token, {
       method: "PUT",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ status, result, expectedVersion, clientMutationId }),
     }),
-  deleteSession: (token: string, athleteId: string, date: string) =>
-    request<void>(`/athletes/${athleteId}/sessions/${date}`, token, { method: "DELETE" }),
 };

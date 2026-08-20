@@ -72,8 +72,10 @@ La interfaz responde de forma genérica al solicitar el código para no revelar 
 2. El listado transporta solamente nombre, fecha y resumen. Cada tarjeta muestra ese resumen al pasar el cursor o enfocarla; al seleccionarla, la PWA solicita el contenido completo y lo abre debajo de la biblioteca.
 3. Elige una fecha de destino y uno o más atletas vinculados.
 4. La API valida todos los vínculos aceptados y copia la planificación a cada atleta en la fecha elegida.
-5. Si ya existía una sesión del mismo coach para un atleta en esa fecha, la asignación reemplaza su contenido. Las sesiones de otros coaches permanecen separadas.
-6. También puede seleccionar un atleta y editar directamente su sesión diaria.
+5. Si ya existe una sesión pendiente, la PWA pide confirmación antes de reemplazarla. Las sesiones iniciadas, completadas u omitidas se conservan y se informan como conflictos.
+6. Las sesiones de otros coaches permanecen separadas.
+
+La API permite que el atleta marque su sesión como iniciada, completada u omitida. Al completarla admite hasta cinco resultados simples —peso, repeticiones, tiempo, distancia o nota—, RPE y un comentario. Sólo el atleta puede crear o corregir estos datos; la interfaz móvil se incorpora en la siguiente etapa.
 
 El contenido reconoce encabezados `CALENTAMIENTO`, `FUERZA` y `WOD` para presentarlos como bloques visuales. La base de datos conserva el texto completo, por lo que no depende de esa estructura.
 
@@ -95,8 +97,7 @@ Todos requieren un JWT de Cognito.
 | `POST` | `/coach-sessions` | Entrenador | Crea una planificación reutilizable. |
 | `POST` | `/coach-sessions/{date}/{id}/assign` | Entrenador | Asigna una planificación a varios atletas. |
 | `GET` | `/athletes/{id}/sessions?coachId=&from=&to=` | Ambos | Lista sesiones del coach indicado en un rango. |
-| `PUT` | `/athletes/{id}/sessions/{date}` | Entrenador | Crea o reemplaza la sesión fechada. |
-| `DELETE` | `/athletes/{id}/sessions/{date}` | Entrenador | Elimina una sesión. |
+| `PUT` | `/me/sessions/{coachId}/{date}/execution` | Atleta | Actualiza estado, resultados, RPE y comentario con versión e idempotencia. |
 
 ## Autorización
 
