@@ -25,6 +25,30 @@ npm run dev
 
 La interfaz puede ejecutarse con datos de demostracion usando `VITE_DEMO_MODE=true`.
 
+## Datos demo en AWS DEV
+
+El seed crea dos coaches (`coach.crossfit@example.com` y `coach.gym@example.com`), cuatro atletas por coach, 12 planificaciones por disciplina y 56 sesiones asignadas para una semana. Las cuentas se crean con emails reservados `@example.com`, marcados como verificados y sin enviar mensajes.
+
+Revise primero el contenido sin modificar AWS:
+
+```bash
+npm run seed:demo:dry-run
+```
+
+Para cargar los datos en la cuenta DEV use el perfil `personal` y suministre una contraseña temporalmente mediante el entorno. La contraseña no se almacena en el repositorio:
+
+```bash
+AWS_PROFILE=personal PLANUP_DEMO_PASSWORD='CambiarEstaClave123' npm run seed:demo
+```
+
+El comando es idempotente: actualiza las cuentas demo y reemplaza solamente los registros marcados con `planup-demo-v1`. Para eliminar todo el dataset demo:
+
+```bash
+AWS_PROFILE=personal npm run cleanup:demo
+```
+
+El script se niega a modificar recursos que no correspondan al pool de `sa-east-1`, la tabla `planup-dev` y la cuenta AWS DEV esperada.
+
 ## Infraestructura
 
 ```bash
@@ -73,6 +97,6 @@ El backend remoto se define en `infra/backend.tf`. El plan de CI usa ese estado 
 
 - Registro e inicio de sesion como entrenador o atleta.
 - Un entrenador vincula atletas registrados mediante su email.
-- El entrenador crea, edita y elimina sesiones fechadas.
+- El entrenador crea planificaciones reutilizables y las asigna por fecha a uno o varios atletas.
 - El atleta consulta sus sesiones pasadas y futuras.
 - Interfaz responsive e instalable en el celular.
