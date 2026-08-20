@@ -492,6 +492,18 @@ describe("PlanUp API handler", () => {
     assert.equal(db.queryCount, 2);
   });
 
+  it("includes legacy sessions in a bounded monthly calendar", async () => {
+    db.seed(
+      { PK: "COACH#coach-1", SK: "ATHLETE#athlete-1", entityType: "COACH_ATHLETE", athleteId: "athlete-1" },
+      { PK: "ATHLETE#athlete-1", SK: "SESSION#coach-1#2026-08-28", entityType: "SESSION", athleteId: "athlete-1", coachId: "coach-1", date: "2026-08-28", content: "Legacy month" },
+    );
+    const result = await invoke(db, event("GET", "/coach/calendar", coach, { query: { from: "2026-08-01", to: "2026-08-31" } }));
+    assert.equal(result.statusCode, 200);
+    assert.equal(result.json.items.length, 1);
+    assert.equal(result.json.items[0].content, "Legacy month");
+    assert.equal(db.queryCount, 2);
+  });
+
   it("rejects calendar ranges longer than 31 days and athlete access", async () => {
     const tooLong = await invoke(db, event("GET", "/coach/calendar", coach, { query: { from: "2026-08-01", to: "2026-09-01" } }));
     const forbidden = await invoke(db, event("GET", "/coach/calendar", athlete, { query: { from: "2026-08-17", to: "2026-08-23" } }));
