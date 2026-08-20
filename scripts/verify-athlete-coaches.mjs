@@ -33,6 +33,11 @@ try {
   await coachSelector.waitFor();
   await page.getByRole("heading", { name: "Invitaciones de coaches" }).waitFor();
   await page.getByText("12 min AMRAP").waitFor();
+  await page.getByText("Historial", { exact: true }).waitFor();
+  await page.getByRole("button", { name: "Mes anterior del historial" }).click();
+  await page.getByText("No hay sesiones de este coach en el mes.").waitFor();
+  await page.getByRole("button", { name: "Mes siguiente del historial" }).click();
+  await page.locator(".history-list button").first().waitFor();
 
   await coachSelector.selectOption("coach-2");
   await page.getByText("Trabajo de cadera y tobillo.").waitFor();
@@ -42,7 +47,7 @@ try {
   if (await coachSelector.inputValue() !== "coach-3") throw new Error("Accepted coach was not selected");
   await page.getByRole("heading", { name: "Día libre de momento" }).waitFor();
 
-  console.log("Athlete coach verification passed: centered desktop layout, invitations, selection, and isolated sessions.");
+  console.log("Athlete coach verification passed: centered layout, monthly history, invitations, coach selection, and isolated sessions.");
 } finally {
   await browser?.close();
   await server.close();

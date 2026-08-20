@@ -52,6 +52,9 @@ header { height: 86px; display: flex; align-items: center; justify-content: spac
 .coach-navigation { display: flex; border: 4px solid var(--dark); background: var(--paper); }
 .coach-navigation button { flex: 1; border: 0; padding: 13px 18px; color: var(--dark); background: transparent; font-weight: 800; text-transform: uppercase; }
 .coach-navigation button.active { color: #fff; background: var(--dark); }
+.calendar-mode-switch { display: grid; grid-template-columns: 1fr 1fr; width: min(260px, 100%); margin: 18px 0 -4px auto; border: 2px solid var(--dark); background: var(--paper); }
+.calendar-mode-switch button { border: 0; padding: 8px 14px; color: var(--dark); background: transparent; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+.calendar-mode-switch button.active { color: #fff; background: var(--dark); }
 .compliance-panel { margin-top: 18px; padding: 18px; color: var(--dark); background: var(--paper); box-shadow: 7px 7px 0 var(--dark); }
 .week-heading { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; gap: 12px; text-align: center; }
 .week-heading button { display: grid; place-items: center; height: 44px; border: 0; color: #fff; background: var(--dark); }
@@ -81,6 +84,40 @@ header { height: 86px; display: flex; align-items: center; justify-content: spac
 .calendar-message { display: grid; gap: 5px; padding: 38px 10px; text-align: center; }
 .calendar-message strong { font: italic 800 24px "Barlow Condensed"; text-transform: uppercase; }
 .calendar-message span { color: #666; font-size: 12px; }
+.monthly-calendar-panel { margin-top: 18px; padding: 18px; color: var(--dark); background: var(--paper); box-shadow: 7px 7px 0 var(--dark); }
+.month-weekdays, .month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.month-weekdays { margin: 14px 0 5px; text-align: center; }
+.month-weekdays span { font-size: 10px; font-weight: 800; text-transform: uppercase; }
+.month-grid > span { min-height: 70px; }
+.month-grid button { position: relative; display: grid; align-content: start; min-height: 70px; border: 2px solid #c7c2b9; padding: 6px; color: var(--dark); background: #fff; text-align: left; }
+.month-grid button.selected { border-color: var(--dark); box-shadow: inset 0 0 0 2px var(--dark); }
+.month-grid button > strong { font: 800 18px "Barlow Condensed"; }
+.month-grid button > small { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; min-width: 20px; height: 20px; border-radius: 50%; color: #fff; background: var(--dark); font-size: 10px; }
+.month-statuses { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 8px; }
+.month-statuses i { width: 8px; height: 8px; border-radius: 50%; background: #777; }
+.month-statuses i.completed { background: #23834b; }
+.month-statuses i.in_progress { background: #c77b00; }
+.month-statuses i.skipped { background: #68645d; }
+.month-statuses i.pending { background: var(--red); }
+.month-day-detail { margin-top: 14px; padding-top: 12px; border-top: 3px solid var(--dark); }
+.month-day-detail h3 { margin: 0 0 8px; font: italic 800 23px "Barlow Condensed"; text-transform: uppercase; }
+.month-day-detail article { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #d3cec5; background: #fff; }
+.month-day-detail article div { display: grid; gap: 2px; }
+.month-day-detail article small { color: #666; }
+.month-day-detail article > span { font-size: 11px; font-weight: 800; }
+.month-day-detail article > span.completed { color: #23834b; }
+.month-day-detail article > span.in_progress { color: #a86600; }
+.month-day-detail article > span.skipped { color: #68645d; }
+.athlete-history { margin-top: 28px; padding: 16px; border: 3px solid var(--dark); color: var(--dark); background: var(--paper); box-shadow: 6px 6px 0 var(--dark); }
+.history-heading { display: grid; grid-template-columns: 38px 1fr 38px; align-items: center; gap: 8px; text-align: center; }
+.history-heading button { display: grid; place-items: center; height: 38px; border: 0; color: #fff; background: var(--dark); }
+.history-heading h2 { margin: 2px 0 0; font: italic 800 25px "Barlow Condensed"; text-transform: uppercase; }
+.history-list { display: grid; gap: 5px; max-height: 250px; margin-top: 12px; overflow-y: auto; }
+.history-list button { display: grid; grid-template-columns: 60px 1fr; align-items: center; gap: 9px; border: 2px solid transparent; padding: 9px; color: var(--dark); background: #fff; text-align: left; }
+.history-list button.selected { border-color: var(--dark); }
+.history-list time { font: 800 16px "Barlow Condensed"; text-transform: uppercase; }
+.history-list button > div { display: grid; gap: 3px; min-width: 0; }
+.history-list small { display: flex; align-items: center; gap: 4px; color: #666; }
 .group-panel { margin-top: 18px; padding: 18px; color: var(--dark); background: var(--paper); box-shadow: 7px 7px 0 var(--dark); }
 .group-create { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
 .group-layout { display: grid; grid-template-columns: 220px 1fr; gap: 12px; margin-top: 14px; }
@@ -230,6 +267,15 @@ button:disabled { cursor: not-allowed; opacity: .55; }
   .coach-navigation { border-width: 3px; }
   .coach-navigation button { padding: 11px 8px; font-size: 12px; }
   .compliance-panel { margin-top: 12px; padding: 12px; box-shadow: 5px 5px 0 var(--dark); }
+  .calendar-mode-switch { margin-top: 12px; }
+  .monthly-calendar-panel { margin-top: 12px; padding: 10px; box-shadow: 5px 5px 0 var(--dark); }
+  .month-grid, .month-weekdays { gap: 2px; }
+  .month-grid > span, .month-grid button { min-height: 50px; }
+  .month-grid button { padding: 4px; }
+  .month-statuses { margin-top: 4px; }
+  .month-statuses i { width: 6px; height: 6px; }
+  .month-day-detail article { align-items: start; flex-direction: column; }
+  .athlete-history { margin-top: 22px; padding: 12px; box-shadow: 5px 5px 0 var(--dark); }
   .week-heading { grid-template-columns: 38px 1fr 38px; gap: 7px; }
   .week-heading button { height: 38px; }
   .week-heading h2 { font-size: 21px; }

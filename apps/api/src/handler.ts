@@ -670,19 +670,19 @@ export function createHandler(database: Database): APIGatewayProxyHandlerV2WithJ
       }
 
       const rangeDays = Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000) + 1;
-      if (!cursor.key && cursor.monthIndex === 0 && rangeDays <= 7) {
+      if (!cursor.key && cursor.monthIndex === 0 && rangeDays <= 31) {
+        const legacyAthleteLimit = Math.max(1, Math.min(50, Math.floor(500 / rangeDays)));
         const relations = await database.send(new QueryCommand({
           TableName: tableName,
           KeyConditionExpression: "PK = :pk AND begins_with(SK, :athlete)",
           ExpressionAttributeValues: { ":pk": `COACH#${identity.id}`, ":athlete": "ATHLETE#" },
-          Limit: 50,
+          Limit: legacyAthleteLimit,
         }));
         const dates = Array.from({ length: rangeDays }, (_, offset) => addDays(from!, offset));
         const legacyKeys = (relations.Items ?? []).flatMap((relation) => dates.map((date) => ({ PK: `ATHLETE#${relation.athleteId}`, SK: `SESSION#${identity.id}#${date}` })));
-        for (let offset = 0; offset < legacyKeys.length; offset += 100) {
-          const result = await database.send(new BatchGetCommand({ RequestItems: { [tableName!]: { Keys: legacyKeys.slice(offset, offset + 100) } } }));
-          items.push(...(result.Responses?.[tableName!] ?? []));
-        }
+        const batches = Array.from({ length: Math.ceil(legacyKeys.length / 100) }, (_, index) => legacyKeys.slice(index * 100, index * 100 + 100));
+        const legacyResults = await Promise.all(batches.map((keys) => database.send(new BatchGetCommand({ RequestItems: { [tableName!]: { Keys: keys } } }))));
+        items.push(...legacyResults.flatMap((result) => result.Responses?.[tableName!] ?? []));
       }
 
       const uniqueItems = [...new Map(items.map((item) => [`${item.PK}|${item.SK}`, item])).values()];
